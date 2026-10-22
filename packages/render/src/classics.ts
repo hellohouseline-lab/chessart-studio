@@ -1,5 +1,5 @@
-// The four classic games, keyed by the original print SVG file name.
-export const classics: Record<string, string> = {
+// The four classic games on the ChessArt prints, keyed by name (also the original print SVG file names).
+export const classicGames: Record<string, string> = {
   "The Immortal Game": `[Event "London casual game"]
 [Site "London ENG"]
 [Date "1851.06.21"]

@@ -44,6 +44,15 @@ export const palettes: readonly Palette[] = [
     castle: ["#F5D06F", "#B8860B"],
   },
   {
+    // Faded herbarium tones, made for Pressed Flowers on the Paper theme.
+    id: "botanical",
+    name: "Botanical",
+    white: ["#F4C7CE", "#C2566F"],
+    black: ["#C9D8EA", "#4A6FA5"],
+    capture: ["#FFE29A", "#E07A1F"],
+    castle: ["#EFE6F7", "#9B7BC4"],
+  },
+  {
     id: "neon",
     name: "Neon",
     white: ["#00F5FF", "#7B61FF"],

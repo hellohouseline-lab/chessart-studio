@@ -12,6 +12,7 @@ export interface ArtMove {
   piece: PieceType;
   side: Side;
   kind: MoveKind;
+  captured?: PieceType; // what was taken, for captures
   clock?: number; // seconds left on the mover's clock after the move, from [%clk]
 }
 
@@ -107,6 +108,7 @@ export function parseGame(pgn: string): ArtGame {
       piece: m.piece as PieceType,
       side: m.color as Side,
       kind: m.captured ? "capture" : castle ? "castle" : "normal",
+      captured: m.captured as PieceType | undefined,
       clock: comment ? parseClock(comment) : undefined,
     };
   });

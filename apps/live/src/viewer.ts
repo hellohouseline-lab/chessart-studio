@@ -1,9 +1,10 @@
 import {
   buildScene,
   drawBoard,
-  drawLens,
+  drawMark,
   drawMoves,
   easeInOutCubic,
+  flowerNames,
   getPalette,
   getTheme,
   parseGame,
@@ -13,7 +14,7 @@ import {
 } from "@chessart/render";
 import { esc, formatClock, resultText, splitName } from "./format";
 import type { LiveHandlers, LiveUpdate, Status } from "./lichess";
-import { nextPalette, nextTheme, writeSettings, type Settings } from "./settings";
+import { nextPalette, nextStyle, nextTheme, writeSettings, type Settings } from "./settings";
 
 const SWEEP_SECONDS = 1.6; // how long one live move takes to draw
 const INTRO_SECONDS = 5; // how long catching up on already-played moves takes
@@ -69,9 +70,10 @@ export class Viewer {
           <section class="result" hidden></section>
           <section class="moves"><p></p></section>
           <ul class="legend"></ul>
+          <ul class="legend flowers" hidden></ul>
           <footer><img alt="ChessArt" /><span>chessart.me</span></footer>
         </aside>
-        <p class="hint">F full screen · T theme · P palette · H panel · L labels · B back</p>
+        <p class="hint">F full screen · S style · T theme · P palette · H panel · L labels · B back</p>
       </div>`;
     this.root = parent.querySelector(".viewer")!;
     this.canvas = this.root.querySelector("canvas")!;
@@ -190,7 +192,7 @@ export class Viewer {
     this.ctx.fillStyle = theme.background;
     this.ctx.fillRect(0, 0, this.sizePx, this.sizePx);
     this.ctx.drawImage(this.cache, 0, 0);
-    if (frac > 0) drawLens(this.ctx, scene.shapes[full]!, rect, easeInOutCubic(frac));
+    if (frac > 0) drawMark(this.ctx, scene, full, rect, easeInOutCubic(frac));
   }
 
   // --- side panel ----------------------------------------------------------
@@ -246,6 +248,14 @@ export class Viewer {
     ]
       .map(([label, stops]) => `<li><i style="${swatch(stops as [string, string])}"></i>${label}</li>`)
       .join("");
+
+    // Pressed Flowers: which flower each piece grows.
+    const flowers = $(".legend.flowers");
+    flowers.hidden = this.settings.style !== "pressed-flowers";
+    const glyphs = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" } as const;
+    flowers.innerHTML = (Object.keys(glyphs) as Array<keyof typeof glyphs>)
+      .map((p) => `<li><b>${glyphs[p]}</b>${flowerNames[p]}</li>`)
+      .join("");
   }
 
   private renderClocks() {
@@ -293,6 +303,9 @@ export class Viewer {
         if (document.fullscreenElement) document.exitFullscreen();
         else document.documentElement.requestFullscreen().catch(() => {});
         return;
+      case "s":
+        Object.assign(s, nextStyle(s));
+        break;
       case "t":
         s.theme = nextTheme(s.theme);
         break;
@@ -306,7 +319,7 @@ export class Viewer {
         s.labels = !s.labels;
         break;
       case "b":
-        location.href = `${location.pathname}?theme=${s.theme}&palette=${s.palette}`;
+        location.href = `${location.pathname}?style=${s.style}&theme=${s.theme}&palette=${s.palette}`;
         return;
       default:
         return;

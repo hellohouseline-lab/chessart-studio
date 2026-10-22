@@ -3,8 +3,8 @@ import { fetchRound, fetchTopBroadcasts, parseLichessUrl, type RoundInfo } from 
 import { readSettings } from "./settings";
 
 function go(params: Record<string, string>) {
-  const { theme, palette } = readSettings();
-  location.search = new URLSearchParams({ ...params, theme, palette }).toString();
+  const { style, theme, palette } = readSettings();
+  location.search = new URLSearchParams({ ...params, style, theme, palette }).toString();
 }
 
 export async function showPicker(parent: HTMLElement, roundId?: string) {
@@ -13,6 +13,10 @@ export async function showPicker(parent: HTMLElement, roundId?: string) {
       <header>
         <img src="${import.meta.env.BASE_URL}ChessArt_Logo_White.png" alt="" />
         <div><h1>ChessArt Live</h1><p>Watch a game turn into art, move by move.</p></div>
+        <nav class="tool-links">
+          <a class="tool-link" href="./flower-key.jpg" target="_blank" rel="noopener">Flower key</a>
+          <a class="tool-link" href="./animate/">Make a video →</a>
+        </nav>
       </header>
       <form class="link">
         <input name="url" placeholder="Paste a Lichess broadcast or game link" autocomplete="off" />

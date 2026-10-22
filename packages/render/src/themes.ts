@@ -5,6 +5,7 @@ export interface Theme {
   foreground: string;
   muted: string;
   checker?: string; // fill for the shaded squares; absent means no board
+  texture?: "paper"; // surface grain drawn over the background
   dark: boolean;
 }
 
@@ -19,6 +20,16 @@ export const themes: readonly Theme[] = [
     muted: "#8C8C8C",
     checker: "#262626",
     dark: true,
+  },
+  {
+    // Warm, slightly aged paper: made for Pressed Flowers, works with any style.
+    id: "paper",
+    name: "Paper",
+    background: "#F3EDE1",
+    foreground: "#2B2620",
+    muted: "#8C8273",
+    texture: "paper",
+    dark: false,
   },
   {
     id: "light-checkers",

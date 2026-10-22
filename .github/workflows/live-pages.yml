@@ -1,6 +1,6 @@
-# Builds the live viewer and publishes it to GitHub Pages on every push to main.
-# One-time setup: repo Settings → Pages → Source: "GitHub Actions".
-name: Deploy live viewer
+# Builds the site (live viewer at /, animation tool at /animate/) and publishes it to
+# GitHub Pages on every push to main. One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+name: Deploy site
 
 on:
   push:
@@ -27,11 +27,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build:live
+      - run: npm run build:site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/live/dist
+          path: site
 
   deploy:
     needs: build

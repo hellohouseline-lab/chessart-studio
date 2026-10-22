@@ -1,7 +1,8 @@
-import { getPalette, getTheme, palettes, themes } from "@chessart/render";
+import { getPalette, getStyle, getTheme, palettes, styles, themes } from "@chessart/render";
 
 // Viewer settings live in the URL so a kiosk can be pointed at one link and simply reloaded.
 export interface Settings {
+  style: string;
   theme: string;
   palette: string;
   panel: boolean;
@@ -9,9 +10,11 @@ export interface Settings {
 }
 
 export function readSettings(params = new URLSearchParams(location.search)): Settings {
+  const style = getStyle(params.get("style") ?? undefined);
   return {
-    theme: getTheme(params.get("theme") ?? undefined).id,
-    palette: getPalette(params.get("palette") ?? undefined).id,
+    style: style.id,
+    theme: getTheme(params.get("theme") ?? style.defaults?.theme).id,
+    palette: getPalette(params.get("palette") ?? style.defaults?.palette).id,
     panel: params.get("panel") !== "0",
     labels: params.get("labels") !== "0",
   };
@@ -19,6 +22,7 @@ export function readSettings(params = new URLSearchParams(location.search)): Set
 
 export function writeSettings(s: Settings) {
   const params = new URLSearchParams(location.search);
+  params.set("style", s.style);
   params.set("theme", s.theme);
   params.set("palette", s.palette);
   s.panel ? params.delete("panel") : params.set("panel", "0");
@@ -31,3 +35,14 @@ const next = <T extends { id: string }>(list: readonly T[], id: string) =>
 
 export const nextTheme = (id: string) => next(themes, id);
 export const nextPalette = (id: string) => next(palettes, id);
+
+// Switching style also switches to the theme and palette it was designed for, if it has one.
+export function nextStyle(s: Settings): Settings {
+  const style = getStyle(next(styles, s.style));
+  return {
+    ...s,
+    style: style.id,
+    theme: style.defaults?.theme ?? s.theme,
+    palette: style.defaults?.palette ?? s.palette,
+  };
+}

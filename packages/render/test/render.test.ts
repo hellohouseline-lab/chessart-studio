@@ -8,9 +8,10 @@ import {
   partialLens,
   sceneToSVG,
   splitPgns,
+  type LensShape,
   stripVariations,
 } from "../src/index";
-import { classics } from "./fixtures/classics";
+import { classicGames as classics } from "../src/classics";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 
@@ -113,7 +114,7 @@ describe("matches the original print artwork", () => {
       const scene = buildScene(parseGame(pgn));
 
       expect(scene.shapes).toHaveLength(original.length);
-      scene.shapes.forEach((shape, i) => {
+      (scene.shapes as LensShape[]).forEach((shape, i) => {
         const o = original[i]!;
         const ours = [shape.p0.x, shape.p0.y, shape.c.x, shape.c.y, shape.p2.x, shape.p2.y].map((v) => v * 120);
         ours.forEach((v, j) => expect(v, `${name} move ${i + 1} coord ${j}`).toBeCloseTo(o.n[j]!, 3));

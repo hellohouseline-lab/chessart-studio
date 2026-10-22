@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>ChessArt Animate</title>
+    <link rel="icon" href="/ChessArt_Logo_White.png" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="controls">
+        <header class="brand">
+          <img src="/ChessArt_Logo_White.png" alt="" />
+          <div>
+            <h1>ChessArt Animate</h1>
+            <p>Turn any game into a move-by-move video.</p>
+          </div>
+        </header>
+
+        <section>
+          <h2>Game</h2>
+          <label>Classic game<select id="preset"></select></label>
+          <textarea id="pgn" rows="6" spellcheck="false" placeholder="…or paste a PGN"></textarea>
+          <div class="row">
+            <input id="lichess" placeholder="…or a Lichess game link" autocomplete="off" />
+            <button id="import" type="button">Import</button>
+          </div>
+          <p id="error" class="error" hidden></p>
+        </section>
+
+        <section>
+          <h2>Text</h2>
+          <label>Title<input id="title" /></label>
+          <label>Subtitle<input id="subtitle" /></label>
+          <div class="checks">
+            <label><input type="checkbox" id="players" checked /> Players</label>
+            <label><input type="checkbox" id="counter" checked /> Move counter</label>
+            <label><input type="checkbox" id="logo" checked /> Logo</label>
+            <label><input type="checkbox" id="labels" checked /> Board labels</label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Style</h2>
+          <label>Art style<select id="style"></select></label>
+          <div class="row">
+            <label>Theme<select id="theme"></select></label>
+            <label>Palette<select id="palette"></select></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Format</h2>
+          <div class="segmented" id="aspect" role="radiogroup">
+            <button type="button" data-aspect="9:16">9:16<small>Reels · TikTok</small></button>
+            <button type="button" data-aspect="4:5">4:5<small>Feed</small></button>
+            <button type="button" data-aspect="1:1">1:1<small>Square</small></button>
+            <button type="button" data-aspect="16:9">16:9<small>YouTube</small></button>
+          </div>
+          <label>Frame rate<select id="fps"><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
+        </section>
+
+        <section>
+          <h2>Timing</h2>
+          <label>Seconds per move <output id="perMoveOut"></output>
+            <input type="range" id="perMove" min="0.05" max="2" step="0.01" value="0.45" />
+          </label>
+          <div class="row fit">
+            <span>Fit video to</span>
+            <button type="button" data-fit="15">15s</button>
+            <button type="button" data-fit="30">30s</button>
+            <button type="button" data-fit="60">60s</button>
+          </div>
+          <label>Hold the finished art (seconds)<input type="number" id="hold" min="0" max="15" step="0.5" value="2.5" /></label>
+        </section>
+
+        <section class="export">
+          <h2>Export</h2>
+          <p class="note" id="estimate"></p>
+          <button id="exportMp4" class="primary" type="button">Export MP4</button>
+          <button id="exportPng" type="button">Export transparent PNG frames</button>
+          <label class="check"><input type="checkbox" id="artOnly" checked /> PNG frames: art only (no text, board or labels)</label>
+          <p class="note">Rendered in your browser, nothing is uploaded. MP4 export needs Chrome or Edge.</p>
+        </section>
+      </aside>
+
+      <main class="stage">
+        <div class="frame"><canvas id="preview"></canvas></div>
+        <div class="transport">
+          <button id="play" type="button" aria-label="Play">Play</button>
+          <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Position" />
+          <span id="time">0.0s</span>
+        </div>
+      </main>
+    </div>
+
+    <div class="overlay" id="progress" hidden>
+      <div class="dialog">
+        <p id="progressText">Preparing…</p>
+        <progress id="progressBar" max="1" value="0"></progress>
+        <button id="cancel" type="button">Cancel</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

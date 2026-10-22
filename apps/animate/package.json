@@ -1,0 +1,21 @@
+{
+  "name": "@chessart/animate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174 --strictPort",
+    "build": "tsc -p . && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@chessart/render": "*",
+    "@fontsource/montserrat": "^5.1.0",
+    "fflate": "^0.8.2",
+    "mp4-muxer": "^5.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}

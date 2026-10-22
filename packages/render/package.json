@@ -8,12 +8,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "snapshot": "vite-node scripts/snapshot.ts --",
+    "key": "vite-node scripts/key.ts --"
   },
   "dependencies": {
     "chess.js": "^1.0.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^20.17.0",
     "vitest": "^3.0.0"
   }
