@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "live",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:live"],
+      "port": 5173
+    }
+  ]
+}

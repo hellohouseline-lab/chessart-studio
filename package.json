@@ -1,0 +1,18 @@
+{
+  "name": "chessart-studio",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm test -w @chessart/render",
+    "typecheck": "tsc -p packages/render && tsc -p apps/live",
+    "dev:live": "npm run dev -w @chessart/live",
+    "build:live": "npm run build -w @chessart/live"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

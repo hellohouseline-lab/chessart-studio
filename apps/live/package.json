@@ -1,0 +1,19 @@
+{
+  "name": "@chessart/live",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview --port 4173 --strictPort"
+  },
+  "dependencies": {
+    "@chessart/render": "*",
+    "@fontsource/montserrat": "^5.1.0",
+    "chess.js": "^1.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

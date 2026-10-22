@@ -1,0 +1,20 @@
+{
+  "name": "@chessart/render",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "chess.js": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "vitest": "^3.0.0"
+  }
+}
