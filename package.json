@@ -12,7 +12,7 @@
     "dev:live": "npm run dev -w @chessart/live",
     "dev:animate": "npm run dev -w @chessart/animate",
     "build:live": "npm run build -w @chessart/live",
-    "build:site": "npm run build -w @chessart/live && npm run build -w @chessart/animate && rm -rf site && cp -R apps/live/dist site && cp -R apps/animate/dist site/animate"
+    "build:site": "npm run build -w @chessart/live && npm run build -w @chessart/animate && rm -rf site && cp -R public-site site && cp -R apps/live/dist site/live && cp -R apps/animate/dist site/animate"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

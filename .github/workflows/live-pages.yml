@@ -1,4 +1,4 @@
-# Builds the site (live viewer at /, animation tool at /animate/) and publishes it to
+# Builds the site (animation tool at /animate/, live viewer at /live/) and publishes it to
 # GitHub Pages on every push to main. One-time setup: repo Settings → Pages → Source: "GitHub Actions".
 name: Deploy site
 

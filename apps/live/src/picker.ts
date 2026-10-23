@@ -15,7 +15,7 @@ export async function showPicker(parent: HTMLElement, roundId?: string) {
         <div><h1>ChessArt Live</h1><p>Watch a game turn into art, move by move.</p></div>
         <nav class="tool-links">
           <a class="tool-link" href="./flower-key.jpg" target="_blank" rel="noopener">Flower key</a>
-          <a class="tool-link" href="./animate/">Make a video →</a>
+          <a class="tool-link" href="../animate/">Make a video →</a>
         </nav>
       </header>
       <form class="link">

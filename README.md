@@ -50,6 +50,8 @@ npm run snapshot -w @chessart/render -- --out snapshots --style pressed-flowers 
 
 ## Live viewer
 
+The viewer lives at `/live/`. It isn't linked from anywhere yet and asks search engines not to index it, so only people with the link can find it.
+
 Open the viewer and pick an event, or paste a Lichess link: a broadcast game (`lichess.org/broadcast/<tour>/<round>/<roundId>/<gameId>`) or a regular game (`lichess.org/<gameId>`).
 
 Each game has its own URL, for example `?round=<roundId>&game=<gameId>&style=pressed-flowers&theme=paper&palette=botanical`. Point the exhibition screen at that URL; reloading it resumes the game.
@@ -62,7 +64,16 @@ Each game has its own URL, for example `?round=<roundId>&game=<gameId>&style=pre
 | P | Next palette (Classic, Aurora, Ember, Noir, Botanical, Neon) |
 | H | Hide/show the side panel |
 | L | Hide/show board labels |
+| O | OBS link (see below) |
 | B | Back to the event picker |
+
+### OBS overlay
+
+The **OBS link** button (top right, or O) gives a link to the same game as a browser source for OBS: only the art, filling the source, with no panel. Pick the style, colours and background (transparent by default, to lay over a stream) and where it starts:
+- **Replay from move 1** draws the moves already played at 0.6 seconds each, then carries on live.
+- **Show the game so far** opens on the current position and draws only new moves.
+
+In OBS, add a Browser source, paste the link and set it to 1080 × 1080. The art stays square and centred at any size. The link is the viewer URL plus `obs=1&bg=transparent|solid&start=first|now`.
 
 How it behaves:
 - Moves already played sweep in over about 5 seconds. Each new move then sweeps in over about 1.6 seconds.
@@ -80,7 +91,7 @@ The tool takes a classic game, a pasted PGN or a Lichess game link. You choose t
 
 ## Publishing
 
-Both tools are static sites. `.github/workflows/live-pages.yml` runs the tests, builds the site (`npm run build:site`) and publishes it to GitHub Pages on every push to `main`. The live viewer is at the root and the animation tool is at `/animate/`. One-time setup: in the repo, go to Settings → Pages → Source and choose **GitHub Actions**.
+Both tools are static sites. `.github/workflows/live-pages.yml` runs the tests, builds the site (`npm run build:site`) and publishes it to GitHub Pages on every push to `main`. The animation tool is at `/animate/` (the root forwards there) and the live viewer is at `/live/`. chessart.me carries copies of both at the same paths. One-time setup: in the repo, go to Settings → Pages → Source and choose **GitHub Actions**.
 
 The build uses relative paths, so it works both at `<user>.github.io/<repo>/` and on a custom domain. For `live.chessart.me`:
 1. Add a CNAME record for `live` pointing to `<user>.github.io` (in IONOS, where chessart.me's DNS lives).

@@ -14,10 +14,12 @@ import {
 } from "@chessart/render";
 import { esc, formatClock, resultText, splitName } from "./format";
 import type { LiveHandlers, LiveUpdate, Status } from "./lichess";
+import { openObsDialog, type Overlay } from "./overlay";
 import { nextPalette, nextStyle, nextTheme, writeSettings, type Settings } from "./settings";
 
 const SWEEP_SECONDS = 1.6; // how long one live move takes to draw
 const INTRO_SECONDS = 5; // how long catching up on already-played moves takes
+const REPLAY_SECONDS = 0.6; // per move, when an OBS overlay replays the game from move 1
 
 export interface Heading {
   title?: string;
@@ -52,6 +54,7 @@ export class Viewer {
   constructor(
     parent: HTMLElement,
     private settings: Settings,
+    private overlay: Overlay | null = null,
   ) {
     parent.innerHTML = `
       <div class="viewer">
@@ -73,11 +76,18 @@ export class Viewer {
           <ul class="legend flowers" hidden></ul>
           <footer><img alt="ChessArt" /><span>chessart.me</span></footer>
         </aside>
-        <p class="hint">F full screen · S style · T theme · P palette · H panel · L labels · B back</p>
+        <button class="obs-open" type="button">OBS link</button>
+        <p class="hint">F full screen · S style · T theme · P palette · H panel · L labels · O OBS link · B back</p>
       </div>`;
     this.root = parent.querySelector(".viewer")!;
     this.canvas = this.root.querySelector("canvas")!;
     this.ctx = this.canvas.getContext("2d")!;
+    if (overlay) {
+      this.root.classList.add("overlay");
+      this.root.classList.toggle("transparent", overlay.transparent);
+      document.documentElement.classList.toggle("transparent", overlay.transparent);
+    }
+    this.root.querySelector(".obs-open")!.addEventListener("click", () => this.openObs());
 
     new ResizeObserver(() => this.resize()).observe(this.root.querySelector(".art")!);
     document.fonts.load("500 16px Montserrat").then(() => this.invalidate());
@@ -107,8 +117,14 @@ export class Viewer {
       this.shown = Math.min(this.shown, common);
       this.cacheDirty = true;
     }
-    // One new move sweeps at the normal pace; a backlog (opening a game mid-way) plays out over INTRO_SECONDS.
-    this.rate = Math.max(this.rate, (game.moves.length - this.shown) / INTRO_SECONDS);
+    if (this.overlay && !this.game) {
+      // An overlay either opens on the position as it stands or replays the game at a watchable pace.
+      if (this.overlay.start === "now") this.shown = game.moves.length;
+      else this.rate = 1 / REPLAY_SECONDS;
+    } else {
+      // One new move sweeps at the normal pace; a backlog (opening a game mid-way) plays out over INTRO_SECONDS.
+      this.rate = Math.max(this.rate, (game.moves.length - this.shown) / INTRO_SECONDS);
+    }
 
     this.game = game;
     this.scene = buildScene(game, this.settings);
@@ -181,7 +197,7 @@ export class Viewer {
 
     if (this.cacheDirty || full < this.cached) {
       this.cacheCtx.clearRect(0, 0, this.sizePx, this.sizePx);
-      drawBoard(this.cacheCtx, scene, { rect, labels: this.settings.labels });
+      drawBoard(this.cacheCtx, scene, { rect, labels: this.settings.labels && !this.overlay, background: !this.overlay?.transparent });
       this.cached = 0;
       this.cacheDirty = false;
     }
@@ -189,8 +205,12 @@ export class Viewer {
       drawMoves(this.cacheCtx, scene, rect, this.cached, full);
       this.cached = full;
     }
-    this.ctx.fillStyle = theme.background;
-    this.ctx.fillRect(0, 0, this.sizePx, this.sizePx);
+    if (this.overlay?.transparent) {
+      this.ctx.clearRect(0, 0, this.sizePx, this.sizePx);
+    } else {
+      this.ctx.fillStyle = theme.background;
+      this.ctx.fillRect(0, 0, this.sizePx, this.sizePx);
+    }
     this.ctx.drawImage(this.cache, 0, 0);
     if (frac > 0) drawMark(this.ctx, scene, full, rect, easeInOutCubic(frac));
   }
@@ -284,7 +304,7 @@ export class Viewer {
     css.setProperty("--bg", theme.background);
     css.setProperty("--fg", theme.foreground);
     css.setProperty("--muted", theme.muted);
-    document.body.style.background = theme.background;
+    document.body.style.background = this.overlay?.transparent ? "transparent" : theme.background;
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.background);
     this.root.classList.toggle("no-panel", !this.settings.panel);
     this.root.querySelector<HTMLImageElement>("footer img")!.src =
@@ -295,8 +315,15 @@ export class Viewer {
     this.invalidate();
   }
 
+  private openObs() {
+    openObsDialog(this.root, { ...this.settings }, (s) => {
+      Object.assign(this.settings, s);
+      this.applySettings();
+    });
+  }
+
   private onKey(e: KeyboardEvent) {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || this.overlay || this.root.querySelector("dialog[open]")) return;
     const s = this.settings;
     switch (e.key.toLowerCase()) {
       case "f":
@@ -318,6 +345,9 @@ export class Viewer {
       case "l":
         s.labels = !s.labels;
         break;
+      case "o":
+        this.openObs();
+        return;
       case "b":
         location.href = `${location.pathname}?style=${s.style}&theme=${s.theme}&palette=${s.palette}`;
         return;
