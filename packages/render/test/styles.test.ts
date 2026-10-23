@@ -40,12 +40,13 @@ describe.each(styles.map((s) => [s.id, s] as const))("%s", (id, style) => {
     expect(svg(again)).toBe(svg(scene));
   });
 
+  // Pressed Flowers takes a few seconds in resvg, more on CI runners.
   it("renders as SVG through resvg (the print path)", () => {
     const svg = sceneToSVG(scene, { width: size, height: size, rect });
     const image = new Resvg(svg).render();
     expect(image.width).toBe(size);
     expect(image.height).toBe(size);
-  });
+  }, 30_000);
 });
 
 describe("pressed flowers", () => {
