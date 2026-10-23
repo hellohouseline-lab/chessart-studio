@@ -11,7 +11,8 @@ import { layoutFor, LINE_GAP, TYPE, type FrameOptions, type Layout, type TextAnc
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-const FONT = "Montserrat, Helvetica, Arial, sans-serif";
+// The ChessArt brand face, as on chessart.me. It has no italic, so nothing here asks for one.
+export const FONT = "Syne, Helvetica, Arial, sans-serif";
 
 export interface Logo {
   image: CanvasImageSource;
@@ -47,7 +48,7 @@ export class FrameRenderer {
 
     if (this.cached < 0 || full < this.cached) {
       this.cacheCtx.clearRect(0, 0, local.size, local.size);
-      if (!spec.artOnly) drawBoard(this.cacheCtx, spec.scene, { rect: local, background: false, labels: spec.labels });
+      if (!spec.artOnly) drawBoard(this.cacheCtx, spec.scene, { rect: local, background: false, labels: spec.labels, font: FONT });
       this.cached = 0;
     }
     if (full > this.cached) {
@@ -86,7 +87,7 @@ export class FrameRenderer {
       }
       if (spec.text.subtitle) {
         ctx.fillStyle = theme.muted;
-        fitFont(ctx, spec.text.subtitle, 400, TYPE.subtitle * u, a.width, "italic ");
+        fitFont(ctx, spec.text.subtitle, 400, TYPE.subtitle * u, a.width);
         text(ctx, spec.text.subtitle, a, y);
       }
     }

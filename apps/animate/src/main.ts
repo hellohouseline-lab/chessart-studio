@@ -1,9 +1,22 @@
-import "@fontsource/montserrat/400.css";
-import "@fontsource/montserrat/500.css";
-import "@fontsource/montserrat/700.css";
-import "@fontsource/montserrat/400-italic.css";
+import "@fontsource/syne/400.css";
+import "@fontsource/syne/500.css";
+import "@fontsource/syne/600.css";
+import "@fontsource/syne/700.css";
+import "@fontsource/syne/800.css";
 import "./style.css";
-import { buildScene, classicGames, getStyle, getTheme, palettes, parseGame, styles, themes, type ArtGame } from "@chessart/render";
+import {
+  buildScene,
+  classicGames,
+  drawScene,
+  getPalette,
+  getStyle,
+  getTheme,
+  palettes,
+  parseGame,
+  styles,
+  themes,
+  type ArtGame,
+} from "@chessart/render";
 import { FrameRenderer, type FrameSpec, type Logo } from "./compose";
 import { download, encodeMp4, encodePngZip, writePngFolder, type ExportJob } from "./export";
 import { SIZES, type Aspect } from "./layout";
@@ -17,25 +30,58 @@ declare global {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+// The classic games as cards: display name and a one-line who/where/when.
+const CLASSICS: Record<string, { name: string; meta: string }> = {
+  "The Immortal Game": { name: "The Immortal Game", meta: "Anderssen v Kieseritzky · London, 1851" },
+  "Evergreen Game": { name: "Evergreen Game", meta: "Anderssen v Dufresne · Berlin, 1852" },
+  "The Opera Game": { name: "The Opera Game", meta: "Morphy v the Duke and Count · Paris, 1858" },
+  "Game of The Century": { name: "Game of the Century", meta: "Byrne v Fischer · New York, 1956" },
+};
+
+const STYLE_BLURBS: Record<string, string> = {
+  "classic-arcs": "The original ChessArt look",
+  "brush-strokes": "Painted with intent",
+  "pressed-flowers": "A flower for every piece",
+};
+
+const THEME_SWATCH: Record<string, string> = {
+  dark: "#000000",
+  light: "#ffffff",
+  "dark-checkers": "repeating-conic-gradient(#000 0 25%, #333 0 50%) 0 0 / 10px 10px",
+  paper: "#f3ede1",
+  "light-checkers": "repeating-conic-gradient(#fff 0 25%, #e6e6e6 0 50%) 0 0 / 10px 10px",
+};
+
+const FORMATS: Array<{ aspect: Aspect; use: string; w: number; h: number }> = [
+  { aspect: "9:16", use: "Reels · TikTok", w: 22, h: 40 },
+  { aspect: "4:5", use: "Feed", w: 32, h: 40 },
+  { aspect: "1:1", use: "Square", w: 38, h: 38 },
+  { aspect: "16:9", use: "YouTube", w: 54, h: 30 },
+];
 
 const firstClassic = Object.keys(classicGames)[0]!;
 
 const state = {
   game: parseGame(classicGames[firstClassic]!),
+  classic: firstClassic as string | null, // which classic is loaded, if any
+  source: "classic" as "classic" | "pgn" | "lichess",
   style: "classic-arcs",
   theme: "dark",
   palette: "classic",
   aspect: "9:16" as Aspect,
   fps: 30,
+  length: 24, // target video length in seconds
   intro: 0.8,
-  perMove: 0.45,
   hold: 2.5,
   title: "",
   subtitle: "",
+  showTitle: true,
   players: true,
   counter: true,
   logo: true,
-  labels: true,
+  labels: false,
   artOnly: true,
 };
 
@@ -47,32 +93,14 @@ let time = 0;
 let playing = false;
 let lastTick = 0;
 
-// --- setup ------------------------------------------------------------------
+// --- timing --------------------------------------------------------------------
 
-const options = (el: HTMLSelectElement, items: readonly { id: string; name: string }[]) =>
-  (el.innerHTML = items.map((i) => `<option value="${i.id}">${i.name}</option>`).join(""));
+const moves = () => state.game.moves.length;
+const perMove = () => perMoveFor(state.length, moves(), state);
+const timing = (): Timing => ({ intro: state.intro, perMove: perMove(), hold: state.hold, fps: state.fps });
+const duration = () => durationOf(moves(), timing());
 
-options($("style"), styles);
-options($("theme"), themes);
-options($("palette"), palettes);
-options($("preset"), [
-  ...Object.keys(classicGames).map((name) => ({ id: name, name })),
-  { id: "", name: "Your own PGN…" },
-]);
-
-function loadLogo(src: string): Promise<Logo> {
-  const img = new Image();
-  img.src = src;
-  return img.decode().then(() => ({ image: img, ratio: img.naturalWidth / img.naturalHeight }));
-}
-
-Promise.all([
-  loadLogo(`${import.meta.env.BASE_URL}ChessArt_Logo_White.png`).then((l) => (logos.white = l)),
-  loadLogo(`${import.meta.env.BASE_URL}ChessArt_Logo_Black.png`).then((l) => (logos.black = l)),
-  ...["400", "500", "700", "italic 400"].map((w) => document.fonts.load(`${w} 40px Montserrat`)),
-]).then(rebuild);
-
-// --- game & text ------------------------------------------------------------
+// --- game & text ------------------------------------------------------------------
 
 const known = (v?: string) => (v && !/^[?\-.]+$/.test(v) && !/^https?:/.test(v) ? v : undefined);
 
@@ -86,21 +114,26 @@ function defaultText(game: ArtGame, name?: string) {
   return { title, subtitle: [place, year].filter(Boolean).join(", ") };
 }
 
-function setGame(pgn: string, name?: string): boolean {
+function setGame(pgn: string, classic: string | null = null): boolean {
   let game: ArtGame;
   try {
     game = parseGame(pgn);
-    if (game.moves.length === 0) throw new Error("No moves found in that PGN.");
-  } catch (e) {
-    showError(e instanceof Error ? e.message : String(e));
+  } catch {
+    showError("That doesn't look like a chess game. Check the PGN and try again.");
+    return false;
+  }
+  if (game.moves.length === 0) {
+    showError("No moves found in that PGN.");
     return false;
   }
   showError("");
   state.game = game;
-  Object.assign(state, defaultText(game, name));
+  state.classic = classic;
+  Object.assign(state, defaultText(game, classic ? CLASSICS[classic]?.name : undefined));
   input("title").value = state.title;
   input("subtitle").value = state.subtitle;
   time = 0;
+  drawThumbnails();
   rebuild();
   return true;
 }
@@ -111,11 +144,63 @@ function showError(message: string) {
   el.textContent = message;
 }
 
-$("preset").addEventListener("change", (e) => {
-  const name = (e.target as HTMLSelectElement).value;
-  if (!name) return $<HTMLTextAreaElement>("pgn").focus();
-  $<HTMLTextAreaElement>("pgn").value = classicGames[name]!;
-  setGame(classicGames[name]!, name);
+// --- choice lists (rendered once; selection is kept in aria-pressed) ---------------------
+
+$("source-classic").innerHTML = Object.entries(CLASSICS)
+  .map(([key, c]) => `<button type="button" class="card" data-classic="${esc(key)}" aria-pressed="false"><span class="name">${esc(c.name)}</span><span class="meta">${esc(c.meta)}</span></button>`)
+  .join("");
+
+$("styles").innerHTML = styles
+  .map((s) => `<button type="button" class="card" data-style="${s.id}" aria-pressed="false"><canvas width="240" height="240" aria-hidden="true"></canvas><span class="name">${esc(s.name)}</span><span class="meta">${esc(STYLE_BLURBS[s.id] ?? "")}</span></button>`)
+  .join("");
+
+$("themes").innerHTML = themes
+  .map((t) => `<button type="button" class="chip" data-theme="${t.id}" aria-pressed="false"><span class="swatch" style="background:${THEME_SWATCH[t.id] ?? t.background}"></span>${esc(t.name)}</button>`)
+  .join("");
+
+$("palettes").innerHTML = palettes
+  .map((p) => {
+    const g = `linear-gradient(90deg, ${p.white[0]}, ${p.white[1]} 50%, ${p.capture[0]} 50%, ${p.capture[1]})`;
+    return `<button type="button" class="chip" data-palette="${p.id}" aria-pressed="false"><span class="swatch pill" style="background:${g}"></span>${esc(p.name)}</button>`;
+  })
+  .join("");
+
+$("formats").innerHTML = FORMATS.map(
+  (f) => `<button type="button" class="card" data-aspect="${f.aspect}" aria-pressed="false"><span class="shape-box"><span class="shape" style="width:${f.w}px;height:${f.h}px"></span></span><span class="ratio">${f.aspect}</span><span class="meta">${esc(f.use)}</span></button>`,
+).join("");
+
+// Each style's thumbnail is the current game drawn in that style's own look.
+function drawThumbnails() {
+  document.querySelectorAll<HTMLButtonElement>("[data-style]").forEach((card) => {
+    const style = getStyle(card.dataset.style);
+    const c = card.querySelector("canvas")!;
+    const size = Math.round(240 * Math.min(2, window.devicePixelRatio || 1));
+    c.width = c.height = size;
+    const scene = buildScene(state.game, { style: style.id, theme: style.defaults?.theme ?? "dark", palette: style.defaults?.palette ?? "classic" });
+    drawScene(c.getContext("2d")!, scene, { rect: { x: 0, y: 0, size } });
+  });
+}
+
+const press = (selector: string, attr: string, value: string | number | null) =>
+  document.querySelectorAll<HTMLElement>(selector).forEach((el) => el.setAttribute("aria-pressed", String(el.dataset[attr] === String(value))));
+
+// --- events -------------------------------------------------------------------------
+
+document.querySelectorAll<HTMLButtonElement>("[data-source]").forEach((tab) =>
+  tab.addEventListener("click", () => {
+    state.source = tab.dataset.source as typeof state.source;
+    document.querySelectorAll<HTMLButtonElement>("[data-source]").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
+    for (const id of ["classic", "pgn", "lichess"]) $(`source-${id}`).hidden = id !== state.source;
+    if (state.source === "pgn") $<HTMLTextAreaElement>("pgn").focus();
+    if (state.source === "lichess") input("lichess").focus();
+  }),
+);
+
+$("source-classic").addEventListener("click", (e) => {
+  const key = (e.target as HTMLElement).closest<HTMLElement>("[data-classic]")?.dataset.classic;
+  if (!key) return;
+  $<HTMLTextAreaElement>("pgn").value = classicGames[key]!;
+  setGame(classicGames[key]!, key);
 });
 
 let typing = 0;
@@ -124,9 +209,7 @@ $("pgn").addEventListener("input", (e) => {
   typing = window.setTimeout(() => {
     const pgn = (e.target as HTMLTextAreaElement).value.trim();
     if (!pgn) return;
-    const preset = Object.keys(classicGames).find((k) => classicGames[k]!.trim() === pgn);
-    $<HTMLSelectElement>("preset").value = preset ?? "";
-    setGame(pgn, preset);
+    setGame(pgn, Object.keys(classicGames).find((k) => classicGames[k]!.trim() === pgn) ?? null);
   }, 350);
 });
 
@@ -141,14 +224,49 @@ $("import").addEventListener("click", async () => {
     if (!res.ok) throw new Error(`Lichess couldn't find that game (${res.status}).`);
     const pgn = await res.text();
     $<HTMLTextAreaElement>("pgn").value = pgn;
-    $<HTMLSelectElement>("preset").value = "";
     setGame(pgn);
   } catch (e) {
     showError(e instanceof Error ? e.message : String(e));
   }
 });
 
-// --- settings -----------------------------------------------------------------
+// A style switches to the theme and palette it was designed for; both stay changeable.
+$("styles").addEventListener("click", (e) => {
+  const style = getStyle((e.target as HTMLElement).closest<HTMLElement>("[data-style]")?.dataset.style);
+  if (!(e.target as HTMLElement).closest("[data-style]")) return;
+  state.style = style.id;
+  if (style.defaults?.theme) state.theme = style.defaults.theme;
+  if (style.defaults?.palette) state.palette = style.defaults.palette;
+  rebuild();
+});
+
+const pick = (container: string, attr: "theme" | "palette" | "aspect") =>
+  $(container).addEventListener("click", (e) => {
+    const value = (e.target as HTMLElement).closest<HTMLElement>(`[data-${attr}]`)?.dataset[attr];
+    if (!value) return;
+    (state as Record<string, unknown>)[attr] = value;
+    rebuild();
+  });
+pick("themes", "theme");
+pick("palettes", "palette");
+pick("formats", "aspect");
+
+input("length").addEventListener("input", (e) => {
+  state.length = Number((e.target as HTMLInputElement).value);
+  rebuild();
+});
+document.querySelectorAll<HTMLButtonElement>("[data-length]").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.length = Number(b.dataset.length);
+    rebuild();
+  }),
+);
+document.querySelectorAll<HTMLButtonElement>("[data-fps]").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.fps = Number(b.dataset.fps);
+    rebuild();
+  }),
+);
 
 for (const id of ["title", "subtitle"] as const) {
   input(id).addEventListener("input", (e) => {
@@ -156,53 +274,15 @@ for (const id of ["title", "subtitle"] as const) {
     rebuild();
   });
 }
-for (const id of ["players", "counter", "logo", "labels", "artOnly"] as const) {
+for (const id of ["showTitle", "players", "counter", "logo", "labels", "artOnly"] as const) {
+  input(id).checked = state[id];
   input(id).addEventListener("change", (e) => {
     state[id] = (e.target as HTMLInputElement).checked;
     rebuild();
   });
 }
-// A style switches to the theme and palette it was designed for; both stay changeable.
-$("style").addEventListener("change", (e) => {
-  const style = getStyle((e.target as HTMLSelectElement).value);
-  state.style = style.id;
-  if (style.defaults?.theme) state.theme = $<HTMLSelectElement>("theme").value = style.defaults.theme;
-  if (style.defaults?.palette) state.palette = $<HTMLSelectElement>("palette").value = style.defaults.palette;
-  rebuild();
-});
-for (const id of ["theme", "palette"] as const) {
-  $(id).addEventListener("change", (e) => {
-    state[id] = (e.target as HTMLSelectElement).value;
-    rebuild();
-  });
-}
-$("fps").addEventListener("change", (e) => {
-  state.fps = Number((e.target as HTMLSelectElement).value);
-  rebuild();
-});
-$("aspect").addEventListener("click", (e) => {
-  const aspect = (e.target as HTMLElement).closest<HTMLElement>("[data-aspect]")?.dataset.aspect as Aspect | undefined;
-  if (!aspect) return;
-  state.aspect = aspect;
-  rebuild();
-});
-input("perMove").addEventListener("input", (e) => {
-  state.perMove = Number((e.target as HTMLInputElement).value);
-  rebuild();
-});
-input("hold").addEventListener("change", (e) => {
-  state.hold = Math.max(0, Number((e.target as HTMLInputElement).value) || 0);
-  rebuild();
-});
-document.querySelectorAll<HTMLButtonElement>("[data-fit]").forEach((b) =>
-  b.addEventListener("click", () => {
-    state.perMove = Math.round(perMoveFor(Number(b.dataset.fit), state.game.moves.length, state) * 100) / 100;
-    rebuild();
-  }),
-);
 
-const timing = (): Timing => ({ intro: state.intro, perMove: state.perMove, hold: state.hold, fps: state.fps });
-const duration = () => durationOf(state.game.moves.length, timing());
+// --- render ----------------------------------------------------------------------------
 
 function frameSpec(overrides: Partial<FrameSpec> = {}): FrameSpec {
   const theme = getTheme(state.theme);
@@ -213,45 +293,82 @@ function frameSpec(overrides: Partial<FrameSpec> = {}): FrameSpec {
     transparent: false,
     artOnly: false,
     labels: state.labels,
-    text: { title: state.title, subtitle: state.subtitle, players: state.players, counter: state.counter, logo: state.logo },
+    text: {
+      title: state.showTitle ? state.title : "",
+      subtitle: state.showTitle ? state.subtitle : "",
+      players: state.players,
+      counter: state.counter,
+      logo: state.logo,
+    },
     logo: theme.dark ? logos.white : logos.black,
     ...overrides,
   };
 }
 
-// Any setting change: new renderer, refreshed controls, redraw.
+const fmtLength = (s: number) => `${Math.round(s)} seconds`;
+
+// Any setting change: new renderer, refreshed controls and summaries, redraw.
 function rebuild() {
   const spec = frameSpec();
   renderer = new FrameRenderer(spec);
   canvas.width = spec.width;
   canvas.height = spec.height;
-  document.querySelectorAll<HTMLElement>("[data-aspect]").forEach((b) =>
-    b.setAttribute("aria-checked", String(b.dataset.aspect === state.aspect)),
-  );
-  input("perMove").value = String(state.perMove);
-  $("perMoveOut").textContent = `${state.perMove.toFixed(2)}s`;
+
+  press("[data-classic]", "classic", state.classic);
+  press("[data-style]", "style", state.style);
+  press("[data-theme]", "theme", state.theme);
+  press("[data-palette]", "palette", state.palette);
+  press("[data-aspect]", "aspect", state.aspect);
+  press("[data-length]", "length", state.length);
+  press("[data-fps]", "fps", state.fps);
+
   const t = timing();
-  const moves = state.game.moves.length;
-  $("estimate").textContent = `${moves} moves · ${duration().toFixed(1)}s · ${frameCount(moves, t)} frames at ${spec.width}×${spec.height}`;
+  const total = duration();
+  const frames = frameCount(moves(), t);
+  input("length").value = String(state.length);
+  $("lengthOut").textContent = fmtLength(total);
+  $("pacing").textContent = `${t.perMove.toFixed(2)}s per move · finished art holds for ${state.hold}s`;
+  $("summary").textContent = `${frames} frames · ${spec.width} × ${spec.height} · ${state.fps} fps · about ${Math.round(total)} seconds. Made in your browser, nothing is uploaded. Works best in Chrome or Edge.`;
+
+  const format = FORMATS.find((f) => f.aspect === state.aspect)!;
+  $("gameChoice").textContent = state.title || "Your game";
+  $("styleChoice").textContent = `${getStyle(state.style).name} · ${getTheme(state.theme).name} · ${getPalette(state.palette).name}`;
+  $("formatChoice").textContent = `${format.aspect} ${format.use} · ${Math.round(total)}s`;
+  $("downloadChoice").textContent = `MP4 · ${spec.width} × ${spec.height}`;
+
   const scrub = input("scrub");
-  scrub.max = String(duration());
+  scrub.max = String(total);
   scrub.step = String(1 / state.fps);
-  time = Math.min(time, duration());
+  time = Math.min(time, total);
   draw();
 }
 
-// --- preview playback ------------------------------------------------------------
+const RESULT: Record<string, string> = { "1-0": "White wins 1–0", "0-1": "Black wins 0–1", "1/2-1/2": "Draw ½–½" };
+
+function moveStatus(progress: number): string {
+  const n = moves();
+  if (progress <= 0) return `${n} moves · press play to watch it draw`;
+  if (progress >= n) return [`${n} of ${n} moves`, RESULT[state.game.result]].filter(Boolean).join(" · ");
+  const i = Math.ceil(progress);
+  const m = state.game.moves[i - 1]!;
+  return `Move ${Math.ceil(m.ply / 2)}${m.side === "w" ? "." : "…"} ${m.san} · ${i} of ${n}`;
+}
 
 function draw() {
-  renderer.render(ctx, progressAt(time, state.game.moves.length, timing()));
+  const progress = progressAt(time, moves(), timing());
+  renderer.render(ctx, progress);
   input("scrub").value = String(time);
-  $("time").textContent = `${time.toFixed(1)}s / ${duration().toFixed(1)}s`;
+  $("time").textContent = `${time.toFixed(1)} / ${duration().toFixed(1)}s`;
+  $("moveStatus").textContent = moveStatus(progress);
 }
+
+// --- preview playback ---------------------------------------------------------------------
 
 function setPlaying(on: boolean) {
   playing = on;
-  $("play").textContent = on ? "Pause" : "Play";
-  $("play").setAttribute("aria-label", on ? "Pause" : "Play");
+  const button = $("play");
+  button.classList.toggle("playing", on);
+  button.setAttribute("aria-label", on ? "Pause" : "Play");
   if (on) {
     if (time >= duration()) time = 0;
     lastTick = performance.now();
@@ -276,12 +393,12 @@ input("scrub").addEventListener("input", (e) => {
 });
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement).tagName;
-  if (e.code !== "Space" || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(tag)) return;
+  if (e.code !== "Space" || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "SUMMARY"].includes(tag)) return;
   e.preventDefault();
   setPlaying(!playing);
 });
 
-// --- export -------------------------------------------------------------------------
+// --- export ---------------------------------------------------------------------------------
 
 const slug = () =>
   (state.title || "chessart")
@@ -292,13 +409,13 @@ const slug = () =>
 function job(spec: FrameSpec, onProgress: ExportJob["onProgress"], signal: AbortSignal): ExportJob {
   const r = new FrameRenderer(spec);
   const t = timing();
-  const moves = state.game.moves.length;
+  const n = moves();
   return {
     width: spec.width,
     height: spec.height,
     fps: t.fps,
-    frames: frameCount(moves, t),
-    renderFrame: (c, i) => r.render(c, progressAt(i / t.fps, moves, t)),
+    frames: frameCount(n, t),
+    renderFrame: (c, i) => r.render(c, progressAt(i / t.fps, n, t)),
     onProgress,
     signal,
   };
@@ -309,37 +426,53 @@ const makeMp4 = (onProgress?: ExportJob["onProgress"], signal = new AbortControl
 
 const pngSpec = () => frameSpec({ transparent: true, artOnly: state.artOnly });
 
+const framesFolder = () => `${slug()}-${state.aspect.replace(":", "x")}-frames`;
+
 const makePngZip = (onProgress?: ExportJob["onProgress"], signal = new AbortController().signal) =>
   encodePngZip(job(pngSpec(), onProgress, signal), framesFolder());
 
-const framesFolder = () => `${slug()}-${state.aspect.replace(":", "x")}-frames`;
-
-async function runExport(label: string, work: (onProgress: ExportJob["onProgress"], signal: AbortSignal) => Promise<void>) {
+async function runExport(heading: string, work: (onProgress: ExportJob["onProgress"], signal: AbortSignal) => Promise<void>) {
   setPlaying(false);
-  const overlay = $("progress");
-  const bar = $<HTMLProgressElement>("progressBar");
-  const text = $("progressText");
   const ctrl = new AbortController();
+  const started = performance.now();
+  $("progressTitle").textContent = heading;
+  $("progressSummary").textContent = [
+    state.title || "Your game",
+    getStyle(state.style).name,
+    state.aspect,
+    `${Math.round(duration())} seconds`,
+  ].join(" · ");
+  $("progressFill").style.width = "0%";
+  $("progressFrames").textContent = "Preparing…";
+  $("progressEta").textContent = "";
   $("cancel").onclick = () => ctrl.abort();
-  overlay.hidden = false;
+  $("progress").hidden = false;
+  $("cancel").focus();
   try {
     await work((done, total) => {
-      bar.value = done / total;
-      text.textContent = `${label}: frame ${done} of ${total}`;
+      const pct = Math.round((done / total) * 100);
+      $("progressFill").style.width = `${pct}%`;
+      $("progressBar").setAttribute("aria-valuenow", String(pct));
+      $("progressFrames").textContent = `Frame ${done} of ${total}`;
+      const elapsed = (performance.now() - started) / 1000;
+      const left = done > 0 ? (elapsed / done) * (total - done) : 0;
+      $("progressEta").textContent = done > 0 && done < total ? `About ${Math.max(1, Math.round(left))} seconds left` : "";
     }, ctrl.signal);
   } catch (e) {
     if (!(e instanceof DOMException && e.name === "AbortError")) showError(e instanceof Error ? e.message : String(e));
   } finally {
-    overlay.hidden = true;
+    $("progress").hidden = true;
   }
 }
 
-$("exportMp4").addEventListener("click", () =>
-  runExport("Rendering MP4", async (onProgress, signal) => {
+const exportMp4 = () =>
+  runExport("Making your video", async (onProgress, signal) => {
     const blob = await makeMp4(onProgress, signal);
     download(blob, `${slug()}-${state.aspect.replace(":", "x")}.mp4`);
-  }),
-);
+  });
+
+$("exportMp4").addEventListener("click", exportMp4);
+$("exportMp4Mobile").addEventListener("click", exportMp4);
 
 $("exportPng").addEventListener("click", async () => {
   // Ask for the folder first, while the click still counts as a user gesture.
@@ -353,18 +486,49 @@ $("exportPng").addEventListener("click", async () => {
       return showError(e instanceof Error ? e.message : String(e));
     }
   }
-  runExport("Rendering PNG frames", async (onProgress, signal) => {
+  runExport("Making your frames", async (onProgress, signal) => {
     if (dir) return writePngFolder(job(pngSpec(), onProgress, signal), dir);
     download(await makePngZip(onProgress, signal), `${framesFolder()}.zip`);
   });
 });
 
+// --- start ---------------------------------------------------------------------------------
+
+// Phones start with only the first step open; the rest show their current choice.
+if (window.matchMedia("(max-width: 860px)").matches) {
+  document.querySelectorAll<HTMLDetailsElement>("details.step").forEach((d, i) => (d.open = i === 0));
+} else {
+  // On wide screens the steps are always open headings, not an accordion.
+  document.querySelectorAll<HTMLElement>("details.step summary").forEach((s) =>
+    s.addEventListener("click", (e) => {
+      if (!window.matchMedia("(max-width: 860px)").matches) e.preventDefault();
+    }),
+  );
+}
+
+// onload rather than decode(): decode() can stall while the tab is in the background.
+function loadLogo(src: string): Promise<Logo> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ image: img, ratio: img.naturalWidth / img.naturalHeight });
+    img.onerror = () => reject(new Error(`Couldn't load ${src}`));
+    img.src = src;
+  });
+}
+
 // Scripting hook for testing exports without the download dialog (dev server only).
 if (import.meta.env.DEV) Object.assign(window, { __animate: { makeMp4, makePngZip, state, rebuild } });
 
-$<HTMLSelectElement>("preset").value = firstClassic;
 $<HTMLTextAreaElement>("pgn").value = classicGames[firstClassic]!;
-Object.assign(state, defaultText(state.game, firstClassic));
+Object.assign(state, defaultText(state.game, CLASSICS[firstClassic]?.name));
 input("title").value = state.title;
 input("subtitle").value = state.subtitle;
 rebuild();
+drawThumbnails();
+
+// Redraw once the brand font and logos are in, so canvas text and logos use them.
+Promise.allSettled([
+  loadLogo(`${import.meta.env.BASE_URL}ChessArt_Logo_White.png`).then((l) => (logos.white = l)),
+  loadLogo(`${import.meta.env.BASE_URL}ChessArt_Logo_Black.png`).then((l) => (logos.black = l)),
+  ...["400", "500", "700"].map((w) => document.fonts.load(`${w} 40px Syne`)),
+]).then(rebuild);
