@@ -95,22 +95,20 @@ export class FrameRenderer {
     if (layout.players) {
       const a = layout.players;
       const size = TYPE.player * u;
+      // Each player's marker is their pieces' real colour, outlined so both show on any theme.
       [
-        { name: tags.White ?? "White", filled: true },
-        { name: tags.Black ?? "Black", filled: false },
+        { name: tags.White ?? "White", piece: "#FFFFFF" },
+        { name: tags.Black ?? "Black", piece: "#000000" },
       ].forEach((p, i) => {
         const y = a.y + i * size * LINE_GAP;
         const r = size * 0.24;
         ctx.beginPath();
         ctx.arc(a.x + r, y - size * 0.34, r, 0, Math.PI * 2);
-        if (p.filled) {
-          ctx.fillStyle = theme.foreground;
-          ctx.fill();
-        } else {
-          ctx.strokeStyle = theme.foreground;
-          ctx.lineWidth = size * 0.07;
-          ctx.stroke();
-        }
+        ctx.fillStyle = p.piece;
+        ctx.fill();
+        ctx.strokeStyle = theme.foreground;
+        ctx.lineWidth = size * 0.07;
+        ctx.stroke();
         ctx.fillStyle = theme.foreground;
         const textX = a.x + r * 2 + size * 0.5;
         fitFont(ctx, p.name, 500, size, a.width - (textX - a.x));

@@ -150,15 +150,18 @@ input {
   gap: 1.6vh;
 }
 
+/* The pieces' real colours, outlined so both show on any theme (a dot in the text colour
+   would read as Black on light themes). */
 .dot {
   width: 1.6vh;
   height: 1.6vh;
   border-radius: 50%;
   border: 0.22vh solid var(--fg);
+  background: #000;
 }
 
 .dot.w {
-  background: var(--fg);
+  background: #fff;
 }
 
 .who {
