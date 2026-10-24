@@ -1,7 +1,7 @@
 import { Resvg } from "@resvg/resvg-js";
 import { describe, expect, it } from "vitest";
-import { buildScene, classicGames, flowerNames, parseGame, sceneToSVG, styles } from "../src/index";
-import type { BrushMark } from "../src/styles/brushStrokes";
+import { buildScene, classicGames, flowerNames, parseGame, sceneToSVG, squareCenter, styles, type Scene } from "../src/index";
+import { brushStrokes, PIECE_WIDTH, type BrushMark } from "../src/styles/brushStrokes";
 import type { FlowerMark } from "../src/styles/pressedFlowers";
 import { FLOWER_SCALE } from "../src/styles/flowers";
 
@@ -72,10 +72,27 @@ describe("brush strokes: weight and power", () => {
     return ws.reduce((a, b) => a + b, 0) / ws.length;
   };
 
-  it("makes heavier pieces paint thicker strokes", () => {
-    expect(avgWidth("q")).toBeGreaterThan(avgWidth("r"));
-    expect(avgWidth("r")).toBeGreaterThan(avgWidth("n"));
-    expect(avgWidth("n")).toBeGreaterThan(avgWidth("p"));
+  // King thickest, then queen, rook, bishop and knight, pawns thinnest: every stroke of a rank is
+  // wider than every stroke below it, captures and castling rooks included.
+  it.each(Object.keys(classicGames))("paints by rank in %s", (name) => {
+    const rank = { p: 0, n: 1, b: 1, r: 2, q: 3, k: 4 } as const;
+    const all = (buildScene(parseGame(classicGames[name]!), { style: "brush-strokes" }).shapes as BrushMark[]).flatMap((m) =>
+      m.rook ? [m, m.rook] : [m],
+    );
+    for (let r = 1; r <= 4; r++) {
+      const above = all.filter((m) => rank[m.piece] >= r).map((m) => m.width);
+      const below = all.filter((m) => rank[m.piece] < r).map((m) => m.width);
+      expect(Math.min(...above), `rank ${r} and up vs below`).toBeGreaterThan(Math.max(...below));
+    }
+  });
+
+  it("paints bishops and knights alike", () => {
+    expect(PIECE_WIDTH.b).toBe(PIECE_WIDTH.n);
+    expect(avgWidth("b") / avgWidth("n")).toBeCloseTo(1, 1);
+  });
+
+  it("makes a capture a little heavier than the same piece's quiet moves", () => {
+    for (const piece of ["p", "n", "b", "q"]) expect(avgWidth(piece, "capture"), piece).toBeGreaterThan(avgWidth(piece));
   });
 
   it("splatters only on captures, more for bigger prizes", () => {
@@ -136,5 +153,40 @@ describe("brush strokes", () => {
       return Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
     };
     expect(span(body(0.3))).toBeLessThan(span(body(1)));
+  });
+});
+
+describe("brush strokes: castling", () => {
+  const castles = Object.values(classicGames).flatMap((pgn) => {
+    const scene = buildScene(parseGame(pgn), { style: "brush-strokes" });
+    return (scene.shapes as BrushMark[]).filter((m) => m.kind === "castle").map((mark) => ({ scene, mark }));
+  });
+
+  it("paints the rook's move with the king's, in the castle colour", () => {
+    expect(castles.length).toBeGreaterThan(1);
+    for (const { scene, mark } of castles) {
+      const kingside = mark.path.to.x > mark.path.from.x;
+      const rank = mark.path.from.y;
+      expect(mark.piece).toBe("k");
+      expect(mark.rook?.piece).toBe("r");
+      // h→f or a→d, on the king's rank
+      expect(mark.rook!.path.from).toEqual({ x: squareCenter(kingside ? "h1" : "a1").x, y: rank });
+      expect(mark.rook!.path.to).toEqual({ x: squareCenter(kingside ? "f1" : "d1").x, y: rank });
+      expect(mark.stops).toEqual(scene.palette.castle);
+      expect(mark.rook!.stops).toEqual(scene.palette.castle);
+      expect(mark.rook!.width).toBeLessThan(mark.width);
+    }
+  });
+
+  it("paints two strokes as the move sweeps, the king's on top", () => {
+    const { scene, mark } = castles[0]!;
+    const paint = (m: BrushMark, t: number) => brushStrokes.paint(m, rect, t, scene as Scene<BrushMark>);
+    for (const t of [0.5, 1]) {
+      const king = paint({ ...mark, rook: undefined }, t);
+      const both = paint(mark, t);
+      const rook = paint(mark.rook!, t);
+      expect(rook.length).toBeGreaterThan(0);
+      expect(both).toEqual([...rook, ...king]);
+    }
   });
 });

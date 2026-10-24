@@ -1,17 +1,21 @@
 import { darken, lighten, mix } from "../color";
-import type { PieceType } from "../game";
+import type { ArtMove, PieceType } from "../game";
 import { squareCenter, type Pt } from "../geometry";
-import { toPx } from "../layout";
+import { toPx, type Rect } from "../layout";
 import { PathBuilder, type GradientStops, type PaintOp } from "../paint";
-import type { Stops } from "../palettes";
+import type { Palette, Stops } from "../palettes";
 import { decisiveShape, gauss, offset, StrokePath } from "../paths";
 import { hashString, seeded, type Random } from "../random";
 import type { ArtStyle, Mark } from "../scene";
 import { stopsFor } from "./classicArcs";
 
-// Material value sets the stroke weight. The king has no material value; 4 is its usual
-// "fighting value", heavy enough to matter without endgame king walks swamping the picture.
+// Material value sizes a capture's splatter (and Pressed Flowers' stems). The king has no material
+// value; 4 is its usual "fighting value".
 export const PIECE_VALUE: Record<PieceType, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 4 };
+
+// Stroke weight follows rank, in board units: the king thickest, then the queen, the rook, bishop
+// and knight, and pawns thinnest.
+export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.31, q: 0.255, r: 0.2, b: 0.145, n: 0.145, p: 0.085 };
 
 type Brush = "flat" | "round" | "filbert" | "dry" | "slash";
 
@@ -75,6 +79,7 @@ export interface BrushMark extends Mark {
   drops: Drop[];
   stops: Stops;
   edge: number; // how strongly wet edges darken
+  rook?: BrushMark; // castling: the rook's own stroke, painted with the king's
 }
 
 const clamp = (x: number, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -200,156 +205,177 @@ function dropOutline(d: Drop, scale: number): Pt[] {
   });
 }
 
+function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
+  const rand = seeded(hashString(`brush:${index}:${move.from}${move.to}:${move.san}`));
+  const capture = move.kind === "capture";
+  const captured = move.captured ? PIECE_VALUE[move.captured] : 0;
+  const brush: Brush = capture
+    ? "slash"
+    : pick<Brush>(rand, [
+        ["flat", 1.5],
+        ["round", 3],
+        ["filbert", 3.5],
+        ["dry", 2],
+      ]);
+  let width = PIECE_WIDTH[move.piece] * rand.range(0.93, 1.07);
+  if (capture) width *= 1.06 + 0.012 * captured; // a little heavier, never past a higher-ranked piece
+  const load = brush === "dry" ? rand.range(0.4, 0.6) : capture ? rand.range(0.85, 1) : rand.range(0.5, 0.9);
+  const end = rand.range(0.86, 0.97);
+  const dry = clamp(end - (0.12 + (1 - load) * 0.5) * rand.range(0.8, 1.2), 0.3, end - 0.04);
+  const path = new StrokePath(
+    squareCenter(move.from),
+    squareCenter(move.to),
+    // Played with intent: one committed line. Captures strike dead straight.
+    capture ? decisiveShape(rand, 0.025, 0.7) : decisiveShape(rand, 0.09, 0.3),
+  );
+  const base = { width, dry, end, brush };
+  const m: BrushMark = {
+    index,
+    kind: move.kind,
+    side: move.side,
+    piece: move.piece,
+    path,
+    brush,
+    width,
+    load,
+    attack: rand.range(0.03, 0.1),
+    // A long lift-off: confident and loaded at the start, fast and dry at the finish.
+    release: rand.range(Math.max(dry - 0.25, 0.3), end - 0.1),
+    swell: capture ? rand.range(0.06, 0.16) : rand.range(-0.03, 0.1),
+    rough: brush === "dry" ? rand.range(0.04, 0.07) : rand.range(0.012, 0.04),
+    wobble: [rand.range(1, 3), rand.range(4, 9), rand(), rand()],
+    pressure: [rand.range(0.5, 1.2), rand(), rand.range(0, 0.03)],
+    dry,
+    end,
+    passes: Array.from({ length: rand.int(2, 4) }, () => ({
+      offset: rand.range(-0.22, 0.22),
+      scale: rand.range(0.4, 0.85),
+      alpha: rand.range(0.16, 0.38) * load,
+      from: rand.range(0, 0.25),
+      to: rand.range(dry - 0.1, end),
+    })),
+    bristles: planBristles(rand, base),
+    hairs: Array.from({ length: rand.int(1, 5) }, () => ({
+      side: rand.sign(),
+      at: rand.range(0.08, end),
+      length: rand.range(0.04, 0.16),
+      lean: rand.range(0.1, 0.5),
+    })),
+    drops: capture ? planSplatter(rand, path, width, captured) : [],
+    stops: stopsFor(move, palette),
+    edge: rand.range(0.05, 0.16),
+  };
+  return m;
+}
+
+function paintMark(mark: BrushMark, rect: Rect, t: number): PaintOp[] {
+  if (t <= 0) return [];
+  const px = (p: Pt) => toPx(rect, p);
+  const k = rect.size / 9;
+  const [c0, c1] = mark.stops;
+  const mid = mix(c0, c1, 0.5);
+  const reach = Math.min(t, mark.end);
+  const from = px(mark.path.from);
+  const to = px(mark.path.to);
+  // Paint thins out as the brush runs dry.
+  const fading: GradientStops = [
+    [0, c0, 1],
+    [mark.dry, mid, 1],
+    [mark.end, c1, 0.35 + 0.4 * mark.load],
+    [1, c1, 0.2],
+  ];
+  const paint = { kind: "linear" as const, from, to, stops: fading };
+  const solid = { kind: "linear" as const, from, to, stops: [[0, c0], [1, c1]] as GradientStops };
+  const ops: PaintOp[] = [];
+
+  const body = new PathBuilder(px).curve(outline(mark, 0, reach), true).toString();
+  // Opaque enough to read as gouache on paper rather than a glaze.
+  ops.push({ d: body, fill: paint, opacity: 0.62 + 0.3 * mark.load });
+  for (const pass of mark.passes) {
+    const end = Math.min(reach, pass.to);
+    if (end <= pass.from + 0.02) continue;
+    ops.push({
+      d: new PathBuilder(px).curve(outline(mark, pass.from, end, pass.offset, pass.scale), true).toString(),
+      fill: paint,
+      opacity: pass.alpha,
+    });
+  }
+  // Wet paint pools at its edges.
+  ops.push({ d: body, stroke: darken(mid, 0.3), width: Math.max(0.5, 0.012 * mark.width * k), opacity: mark.edge });
+
+  const groups = new Map<string, { path: PathBuilder; width: number; b: Bristle }>();
+  for (const b of mark.bristles) {
+    const key = `${b.tone}${b.group}`;
+    const g = groups.get(key) ?? { path: new PathBuilder(px), width: 0, b };
+    for (const [s0, s1] of b.segments) {
+      const s1t = Math.min(s1, t);
+      if (s1t > s0 + 0.008) g.path.line(bristleLine(mark, b, s0, s1t));
+    }
+    g.width = Math.max(g.width, b.width);
+    groups.set(key, g);
+  }
+  for (const { path, width, b } of groups.values()) {
+    if (path.empty) continue;
+    ops.push({
+      d: path.toString(),
+      stroke: b.tone === "paint" ? solid : b.tone === "light" ? lighten(mid, 0.55) : darken(mid, 0.42),
+      width: width * mark.width * k * (b.group ? 0.65 : 1),
+      opacity: b.tone === "paint" ? (b.group ? 0.85 : 0.55) * (0.6 + 0.4 * mark.load) : b.tone === "light" ? 0.18 : 0.26,
+      cap: "round",
+    });
+  }
+
+  // Frayed hairs escaping the edge.
+  const hairs = new PathBuilder(px);
+  for (const h of mark.hairs) {
+    if (h.at > reach) continue;
+    const p = mark.path.at(h.at);
+    const { t: dir, n } = mark.path.frame(h.at);
+    const w = (mark.width * profile(mark, h.at)) / 2;
+    const root = offset(p, n, h.side * w * 0.85);
+    const tip = offset(offset(root, dir, h.length), n, h.side * h.lean * w);
+    hairs.M(root).Q(offset(offset(root, dir, h.length * 0.6), n, h.side * h.lean * w * 0.2), tip);
+  }
+  if (!hairs.empty) ops.push({ d: hairs.toString(), stroke: solid, width: Math.max(0.5, 0.012 * mark.width * k * 3), opacity: 0.5 });
+
+  // Splatter lands as the strike arrives.
+  const impact = clamp((t - 0.88) / 0.12);
+  if (mark.drops.length && impact > 0) {
+    const big = new PathBuilder(px);
+    const small = new PathBuilder(px);
+    for (const d of mark.drops) (d.big ? big : small).curve(dropOutline(d, impact), true);
+    if (!big.empty) {
+      ops.push({ d: big.toString(), fill: c1, opacity: 0.92 });
+      ops.push({ d: big.toString(), stroke: darken(c1, 0.3), width: Math.max(0.5, 0.004 * k), opacity: 0.3 });
+    }
+    if (!small.empty) ops.push({ d: small.toString(), fill: c1, opacity: 0.78 });
+  }
+  return ops;
+}
+
 export const brushStrokes: ArtStyle<BrushMark> = {
   id: "brush-strokes",
   name: "Brush Strokes",
+  defaults: { theme: "paper", palette: "ink" },
   buildScene(game, { theme, palette }) {
     const shapes = game.moves.map((move, index): BrushMark => {
-      const rand = seeded(hashString(`brush:${index}:${move.from}${move.to}:${move.san}`));
-      const capture = move.kind === "capture";
-      const captured = move.captured ? PIECE_VALUE[move.captured] : 0;
-      const brush: Brush = capture
-        ? "slash"
-        : pick<Brush>(rand, [
-            ["flat", 1.5],
-            ["round", 3],
-            ["filbert", 3.5],
-            ["dry", 2],
-          ]);
-      let width = (0.065 + 0.03 * PIECE_VALUE[move.piece]) * rand.range(0.85, 1.15);
-      if (capture) width *= 1.2 + 0.06 * captured;
-      const load = brush === "dry" ? rand.range(0.4, 0.6) : capture ? rand.range(0.85, 1) : rand.range(0.5, 0.9);
-      const end = rand.range(0.86, 0.97);
-      const dry = clamp(end - (0.12 + (1 - load) * 0.5) * rand.range(0.8, 1.2), 0.3, end - 0.04);
-      const path = new StrokePath(
-        squareCenter(move.from),
-        squareCenter(move.to),
-        // Played with intent: one committed line. Captures strike dead straight.
-        capture ? decisiveShape(rand, 0.025, 0.7) : decisiveShape(rand, 0.09, 0.3),
-      );
-      const base = { width, dry, end, brush };
-      const m: BrushMark = {
-        index,
-        kind: move.kind,
-        side: move.side,
-        piece: move.piece,
-        path,
-        brush,
-        width,
-        load,
-        attack: rand.range(0.03, 0.1),
-        // A long lift-off: confident and loaded at the start, fast and dry at the finish.
-        release: rand.range(Math.max(dry - 0.25, 0.3), end - 0.1),
-        swell: capture ? rand.range(0.06, 0.16) : rand.range(-0.03, 0.1),
-        rough: brush === "dry" ? rand.range(0.04, 0.07) : rand.range(0.012, 0.04),
-        wobble: [rand.range(1, 3), rand.range(4, 9), rand(), rand()],
-        pressure: [rand.range(0.5, 1.2), rand(), rand.range(0, 0.03)],
-        dry,
-        end,
-        passes: Array.from({ length: rand.int(2, 4) }, () => ({
-          offset: rand.range(-0.22, 0.22),
-          scale: rand.range(0.4, 0.85),
-          alpha: rand.range(0.16, 0.38) * load,
-          from: rand.range(0, 0.25),
-          to: rand.range(dry - 0.1, end),
-        })),
-        bristles: planBristles(rand, base),
-        hairs: Array.from({ length: rand.int(1, 5) }, () => ({
-          side: rand.sign(),
-          at: rand.range(0.08, end),
-          length: rand.range(0.04, 0.16),
-          lean: rand.range(0.1, 0.5),
-        })),
-        drops: capture ? planSplatter(rand, path, width, captured) : [],
-        stops: stopsFor(move, palette),
-        edge: rand.range(0.05, 0.16),
-      };
-      return m;
+      const mark = buildMark(move, index, palette);
+      // Castling also paints the rook's move (h→f or a→d), in the castle colour. It stays one mark
+      // per ply, so progress and timing don't change.
+      if (move.kind === "castle") {
+        const rank = move.from[1];
+        const kingside = move.to[0] === "g";
+        const from = (kingside ? "h" : "a") + rank;
+        const to = (kingside ? "f" : "d") + rank;
+        mark.rook = buildMark({ ...move, piece: "r", from, to, san: `${move.san}-rook` }, index, palette);
+      }
+      return mark;
     });
     return { style: this, theme, palette, shapes };
   },
 
+  // The rook goes down first, so the king's stroke lies over it.
   paint(mark, rect, t) {
-    if (t <= 0) return [];
-    const px = (p: Pt) => toPx(rect, p);
-    const k = rect.size / 9;
-    const [c0, c1] = mark.stops;
-    const mid = mix(c0, c1, 0.5);
-    const reach = Math.min(t, mark.end);
-    const from = px(mark.path.from);
-    const to = px(mark.path.to);
-    // Paint thins out as the brush runs dry.
-    const fading: GradientStops = [
-      [0, c0, 1],
-      [mark.dry, mid, 1],
-      [mark.end, c1, 0.35 + 0.4 * mark.load],
-      [1, c1, 0.2],
-    ];
-    const paint = { kind: "linear" as const, from, to, stops: fading };
-    const solid = { kind: "linear" as const, from, to, stops: [[0, c0], [1, c1]] as GradientStops };
-    const ops: PaintOp[] = [];
-
-    const body = new PathBuilder(px).curve(outline(mark, 0, reach), true).toString();
-    ops.push({ d: body, fill: paint, opacity: 0.42 + 0.4 * mark.load });
-    for (const pass of mark.passes) {
-      const end = Math.min(reach, pass.to);
-      if (end <= pass.from + 0.02) continue;
-      ops.push({
-        d: new PathBuilder(px).curve(outline(mark, pass.from, end, pass.offset, pass.scale), true).toString(),
-        fill: paint,
-        opacity: pass.alpha,
-      });
-    }
-    // Wet paint pools at its edges.
-    ops.push({ d: body, stroke: darken(mid, 0.3), width: Math.max(0.5, 0.012 * mark.width * k), opacity: mark.edge });
-
-    const groups = new Map<string, { path: PathBuilder; width: number; b: Bristle }>();
-    for (const b of mark.bristles) {
-      const key = `${b.tone}${b.group}`;
-      const g = groups.get(key) ?? { path: new PathBuilder(px), width: 0, b };
-      for (const [s0, s1] of b.segments) {
-        const s1t = Math.min(s1, t);
-        if (s1t > s0 + 0.008) g.path.line(bristleLine(mark, b, s0, s1t));
-      }
-      g.width = Math.max(g.width, b.width);
-      groups.set(key, g);
-    }
-    for (const { path, width, b } of groups.values()) {
-      if (path.empty) continue;
-      ops.push({
-        d: path.toString(),
-        stroke: b.tone === "paint" ? solid : b.tone === "light" ? lighten(mid, 0.55) : darken(mid, 0.42),
-        width: width * mark.width * k * (b.group ? 0.65 : 1),
-        opacity: b.tone === "paint" ? (b.group ? 0.85 : 0.55) * (0.6 + 0.4 * mark.load) : b.tone === "light" ? 0.18 : 0.26,
-        cap: "round",
-      });
-    }
-
-    // Frayed hairs escaping the edge.
-    const hairs = new PathBuilder(px);
-    for (const h of mark.hairs) {
-      if (h.at > reach) continue;
-      const p = mark.path.at(h.at);
-      const { t: dir, n } = mark.path.frame(h.at);
-      const w = (mark.width * profile(mark, h.at)) / 2;
-      const root = offset(p, n, h.side * w * 0.85);
-      const tip = offset(offset(root, dir, h.length), n, h.side * h.lean * w);
-      hairs.M(root).Q(offset(offset(root, dir, h.length * 0.6), n, h.side * h.lean * w * 0.2), tip);
-    }
-    if (!hairs.empty) ops.push({ d: hairs.toString(), stroke: solid, width: Math.max(0.5, 0.012 * mark.width * k * 3), opacity: 0.5 });
-
-    // Splatter lands as the strike arrives.
-    const impact = clamp((t - 0.88) / 0.12);
-    if (mark.drops.length && impact > 0) {
-      const big = new PathBuilder(px);
-      const small = new PathBuilder(px);
-      for (const d of mark.drops) (d.big ? big : small).curve(dropOutline(d, impact), true);
-      if (!big.empty) {
-        ops.push({ d: big.toString(), fill: c1, opacity: 0.92 });
-        ops.push({ d: big.toString(), stroke: darken(c1, 0.3), width: Math.max(0.5, 0.004 * k), opacity: 0.3 });
-      }
-      if (!small.empty) ops.push({ d: small.toString(), fill: c1, opacity: 0.78 });
-    }
-    return ops;
+    return mark.rook ? [...paintMark(mark.rook, rect, t), ...paintMark(mark, rect, t)] : paintMark(mark, rect, t);
   },
 };

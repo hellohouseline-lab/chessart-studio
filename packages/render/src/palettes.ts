@@ -53,6 +53,15 @@ export const palettes: readonly Palette[] = [
     castle: ["#EFE6F7", "#9B7BC4"],
   },
   {
+    // Real pigments for Brush Strokes on the Paper theme: Prussian blue, lamp black, cadmium red, viridian.
+    id: "ink",
+    name: "Ink",
+    white: ["#5F86AD", "#1B3A5C"],
+    black: ["#5C5C5C", "#151515"],
+    capture: ["#E2583A", "#AE231C"],
+    castle: ["#5DA68C", "#1E6A55"],
+  },
+  {
     id: "neon",
     name: "Neon",
     white: ["#00F5FF", "#7B61FF"],

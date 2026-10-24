@@ -7,7 +7,7 @@ Every chess move drawn as art, from its square of origin to its destination. One
 | Style | Each move is… |
 | --- | --- |
 | **Classic Arcs** | A gradient-filled arc, as on the original prints. Heavier pieces sweep wider arcs. |
-| **Brush Strokes** | A painted stroke made with intent: one committed line, either straight or a single shallow bend. Thickness comes from the piece's value (pawn 1, knight and bishop 3, rook 5, queen 9, king 4). Each stroke gets its own brush (round, filbert, flat or dry), paint load and pressure. It starts loaded and confident, then lifts off fast and dry. A capture is a heavier, dead-straight strike that ends in splatter, and both scale with the value of the piece taken. |
+| **Brush Strokes** | A painted stroke made with intent: one committed line, either straight or a single shallow bend. Thickness follows rank: the king paints the thickest stroke, then the queen, the rook, bishop and knight, and pawns the thinnest. Each stroke gets its own brush (round, filbert, flat or dry), paint load and pressure. It starts loaded and confident, then lifts off fast and dry. A capture is a slightly heavier, dead-straight strike that ends in splatter, which grows with the value of the piece taken. Castling is a fat king stroke plus the rook's own move. It's designed for the Paper theme and Ink palette. |
 | **Pressed Flowers** | A gently curving stem, with a few leaves on longer moves, ending in a real flower chosen for its piece (see the key below). Each petal is drawn individually, with irregular edges, its own tint, veins, darker pressed rims and slight browning. Petals overlap translucently and cast soft shadows on grained paper. It's designed for the Paper theme and Botanical palette. |
 
 ### The Pressed Flower Key
@@ -61,7 +61,7 @@ Each game has its own URL, for example `?round=<roundId>&game=<gameId>&style=pre
 | F | Full screen |
 | S | Next style (switches to that style's designed theme and palette, if it has one) |
 | T | Next theme (Dark, Light, Dark Checkers, Paper, Light Checkers) |
-| P | Next palette (Classic, Aurora, Ember, Noir, Botanical, Neon) |
+| P | Next palette (Classic, Aurora, Ember, Noir, Botanical, Ink, Neon) |
 | H | Hide/show the side panel |
 | L | Hide/show board labels |
 | O | OBS link (see below) |
