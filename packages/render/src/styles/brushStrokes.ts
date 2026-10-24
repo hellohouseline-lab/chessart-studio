@@ -15,7 +15,7 @@ export const PIECE_VALUE: Record<PieceType, number> = { p: 1, n: 3, b: 3, r: 5, 
 
 // Stroke weight follows rank, in board units: the king thickest, then the queen, the rook, bishop
 // and knight, and pawns thinnest. The king lays down about seven times the paint of a pawn.
-export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.55, q: 0.4, r: 0.27, b: 0.17, n: 0.17, p: 0.07 };
+export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.72, q: 0.52, r: 0.35, b: 0.22, n: 0.22, p: 0.09 };
 const SPREAD = 0.15; // ± hand variation in width
 
 // A capture is heavier. Either way a stroke stays just under the thinnest any higher-ranked piece
