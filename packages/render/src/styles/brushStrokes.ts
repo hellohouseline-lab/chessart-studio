@@ -14,8 +14,16 @@ import { stopsFor } from "./classicArcs";
 export const PIECE_VALUE: Record<PieceType, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 4 };
 
 // Stroke weight follows rank, in board units: the king thickest, then the queen, the rook, bishop
-// and knight, and pawns thinnest.
-export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.31, q: 0.255, r: 0.2, b: 0.145, n: 0.145, p: 0.085 };
+// and knight, and pawns thinnest. The king lays down about seven times the paint of a pawn.
+export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.52, q: 0.4, r: 0.27, b: 0.17, n: 0.17, p: 0.07 };
+const SPREAD = 0.1; // ± hand variation in width
+
+// A capture is heavier, but stays just under the thinnest stroke any higher-ranked piece can paint.
+function captureWidth(piece: PieceType, width: number, captured: number): number {
+  const above = Object.values(PIECE_WIDTH).filter((w) => w > PIECE_WIDTH[piece]);
+  const ceiling = above.length ? 0.97 * (1 - SPREAD) * Math.min(...above) : Infinity;
+  return Math.min(width * (1.06 + 0.012 * captured), ceiling);
+}
 
 type Brush = "flat" | "round" | "filbert" | "dry" | "slash";
 
@@ -40,7 +48,7 @@ interface Bristle {
   offset: number;
   segments: Array<[number, number]>; // continuous where the paint is wet, broken where it's dry
   width: number; // fraction of stroke width
-  tone: "paint" | "light" | "dark";
+  tone: "paint" | "light" | "dark" | "unmixed"; // unmixed: streaks of the other end's colour
   group: 0 | 1;
 }
 
@@ -78,6 +86,7 @@ export interface BrushMark extends Mark {
   hairs: Hair[];
   drops: Drop[];
   stops: Stops;
+  shade: number; // −0.1 … 0.1: each stroke's paint mixed a touch darker or lighter
   edge: number; // how strongly wet edges darken
   rook?: BrushMark; // castling: the rook's own stroke, painted with the king's
 }
@@ -133,30 +142,32 @@ function outline(m: BrushMark, from: number, to: number, across = 0, scale = 1):
 }
 
 function bristleLine(m: BrushMark, b: Bristle, from: number, to: number): Pt[] {
-  const floor = m.width * 0.42; // past the body, bristles keep their spread: the dry, split tail
+  // Once the paint runs dry the bristles splay instead of following the body's taper: the split tail.
+  const floor = m.width * 0.75;
   return m.path.samples(from, to, 0.05).map((s) => {
-    const w = Math.max(m.width * profile(m, s), s > m.end ? floor : 0);
+    const w = Math.max(m.width * profile(m, s), floor * smooth(m.dry, m.end, s));
     return offset(m.path.at(s), m.path.frame(s).n, b.offset * w);
   });
 }
 
 function planBristles(rand: Random, m: Pick<BrushMark, "width" | "dry" | "end" | "brush">): Bristle[] {
-  const count = Math.round((12 + m.width * 70) * (m.brush === "dry" ? 1.5 : 1));
+  const count = Math.round((14 + m.width * 110) * (m.brush === "dry" ? 1.4 : 1));
   return Array.from({ length: count }, (): Bristle => {
     const roll = rand();
-    const tone = roll < 0.08 ? "light" : roll < 0.22 ? "dark" : "paint";
+    // Ridges catch the light or sit in shadow; some streaks are paint that never fully mixed.
+    const tone = roll < 0.14 ? "light" : roll < 0.32 ? "dark" : roll < 0.46 ? "unmixed" : "paint";
     const start = rand.range(0, 0.12);
-    const stop = tone === "paint" ? rand.range(m.dry, 1) : rand.range(0.35, m.end);
+    const stop = tone === "paint" || tone === "unmixed" ? rand.range(m.dry, 1) : rand.range(0.35, m.end);
     const segments: Array<[number, number]> = [];
     for (let at = start; at < stop - 0.01; ) {
       const wet = at < m.dry;
-      // Short dabs where the paint is wet (no full-length ridges), broken flecks where it's dry.
-      const len = wet ? rand.range(0.12, 0.45) : rand.range(0.02, 0.14);
+      // Long grooves where the paint is wet, broken flecks where it's dry.
+      const len = wet ? rand.range(0.3, 0.9) : rand.range(0.03, 0.16);
       const seg: [number, number] = [at, Math.min(stop, at + len)];
       segments.push(seg);
-      at = seg[1] + (wet ? rand.range(0.02, 0.09) : rand.range(0.015, 0.07));
+      at = seg[1] + (wet ? rand.range(0.01, 0.05) : rand.range(0.015, 0.06));
     }
-    return { offset: rand.range(-0.48, 0.48), segments, width: rand.range(0.02, 0.075), tone, group: rand() < 0.5 ? 0 : 1 };
+    return { offset: rand.range(-0.48, 0.48), segments, width: rand.range(0.015, 0.06), tone, group: rand() < 0.5 ? 0 : 1 };
   });
 }
 
@@ -169,7 +180,7 @@ function planSplatter(rand: Random, path: StrokePath, width: number, captured: n
   const drops: Drop[] = [
     {
       at: offset(end, { x: Math.cos(dir), y: Math.sin(dir) }, width * 0.12),
-      r: width * rand.range(0.38, 0.5),
+      r: Math.min(width * rand.range(0.3, 0.42), 0.12),
       tail: 0.2,
       angle: dir,
       lobes: [rand.int(4, 7), rand(), rand.range(0.07, 0.13)],
@@ -217,10 +228,11 @@ function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
         ["filbert", 3.5],
         ["dry", 2],
       ]);
-  let width = PIECE_WIDTH[move.piece] * rand.range(0.93, 1.07);
-  if (capture) width *= 1.06 + 0.012 * captured; // a little heavier, never past a higher-ranked piece
+  let width = PIECE_WIDTH[move.piece] * rand.range(1 - SPREAD, 1 + SPREAD);
+  if (capture) width = captureWidth(move.piece, width, captured);
   const load = brush === "dry" ? rand.range(0.4, 0.6) : capture ? rand.range(0.85, 1) : rand.range(0.5, 0.9);
-  const end = rand.range(0.86, 0.97);
+  // A loaded brush carries its body most of the way; a drier one breaks into bristle streaks sooner.
+  const end = Math.min(0.97, rand.range(0.6, 0.78) + 0.2 * load);
   const dry = clamp(end - (0.12 + (1 - load) * 0.5) * rand.range(0.8, 1.2), 0.3, end - 0.04);
   const path = new StrokePath(
     squareCenter(move.from),
@@ -241,10 +253,10 @@ function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
     attack: rand.range(0.03, 0.1),
     // A long lift-off: confident and loaded at the start, fast and dry at the finish.
     release: rand.range(Math.max(dry - 0.25, 0.3), end - 0.1),
-    swell: capture ? rand.range(0.06, 0.16) : rand.range(-0.03, 0.1),
-    rough: brush === "dry" ? rand.range(0.04, 0.07) : rand.range(0.012, 0.04),
+    swell: capture ? rand.range(0.06, 0.18) : rand.range(-0.05, 0.14),
+    rough: brush === "dry" ? rand.range(0.05, 0.09) : rand.range(0.02, 0.055),
     wobble: [rand.range(1, 3), rand.range(4, 9), rand(), rand()],
-    pressure: [rand.range(0.5, 1.2), rand(), rand.range(0, 0.03)],
+    pressure: [rand.range(0.5, 1.4), rand(), rand.range(0.01, 0.07)],
     dry,
     end,
     passes: Array.from({ length: rand.int(2, 4) }, () => ({
@@ -263,7 +275,8 @@ function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
     })),
     drops: capture ? planSplatter(rand, path, width, captured) : [],
     stops: stopsFor(move, palette),
-    edge: rand.range(0.05, 0.16),
+    shade: rand.range(-0.1, 0.1),
+    edge: rand.range(0.08, 0.22),
   };
   return m;
 }
@@ -272,7 +285,9 @@ function paintMark(mark: BrushMark, rect: Rect, t: number): PaintOp[] {
   if (t <= 0) return [];
   const px = (p: Pt) => toPx(rect, p);
   const k = rect.size / 9;
-  const [c0, c1] = mark.stops;
+  const mixed = (c: string) => (mark.shade < 0 ? darken(c, -mark.shade) : lighten(c, mark.shade));
+  const c0 = mixed(mark.stops[0]);
+  const c1 = mixed(mark.stops[1]);
   const mid = mix(c0, c1, 0.5);
   const reach = Math.min(t, mark.end);
   const from = px(mark.path.from);
@@ -286,11 +301,12 @@ function paintMark(mark: BrushMark, rect: Rect, t: number): PaintOp[] {
   ];
   const paint = { kind: "linear" as const, from, to, stops: fading };
   const solid = { kind: "linear" as const, from, to, stops: [[0, c0], [1, c1]] as GradientStops };
+  const unmixed = { kind: "linear" as const, from, to, stops: [[0, c1], [1, c0]] as GradientStops };
   const ops: PaintOp[] = [];
 
   const body = new PathBuilder(px).curve(outline(mark, 0, reach), true).toString();
-  // Opaque enough to read as gouache on paper rather than a glaze.
-  ops.push({ d: body, fill: paint, opacity: 0.62 + 0.3 * mark.load });
+  // Translucent enough that crossings show through; the passes and bristles build up the colour.
+  ops.push({ d: body, fill: paint, opacity: 0.5 + 0.28 * mark.load });
   for (const pass of mark.passes) {
     const end = Math.min(reach, pass.to);
     if (end <= pass.from + 0.02) continue;
@@ -303,24 +319,31 @@ function paintMark(mark: BrushMark, rect: Rect, t: number): PaintOp[] {
   // Wet paint pools at its edges.
   ops.push({ d: body, stroke: darken(mid, 0.3), width: Math.max(0.5, 0.012 * mark.width * k), opacity: mark.edge });
 
-  const groups = new Map<string, { path: PathBuilder; width: number; b: Bristle }>();
+  // Bristles in the dry tail clump together, so they drag thicker flecks than in the wet body.
+  const groups = new Map<string, { path: PathBuilder; width: number; b: Bristle; tail: boolean }>();
   for (const b of mark.bristles) {
-    const key = `${b.tone}${b.group}`;
-    const g = groups.get(key) ?? { path: new PathBuilder(px), width: 0, b };
     for (const [s0, s1] of b.segments) {
       const s1t = Math.min(s1, t);
-      if (s1t > s0 + 0.008) g.path.line(bristleLine(mark, b, s0, s1t));
+      if (s1t <= s0 + 0.008) continue;
+      const tail = s0 >= mark.end;
+      const key = `${b.tone}${b.group}${tail ? "t" : ""}`;
+      const g = groups.get(key) ?? { path: new PathBuilder(px), width: 0, b, tail };
+      g.path.line(bristleLine(mark, b, s0, s1t));
+      g.width = Math.max(g.width, b.width);
+      groups.set(key, g);
     }
-    g.width = Math.max(g.width, b.width);
-    groups.set(key, g);
   }
-  for (const { path, width, b } of groups.values()) {
-    if (path.empty) continue;
+  for (const { path, width, b, tail } of groups.values()) {
     ops.push({
       d: path.toString(),
-      stroke: b.tone === "paint" ? solid : b.tone === "light" ? lighten(mid, 0.55) : darken(mid, 0.42),
-      width: width * mark.width * k * (b.group ? 0.65 : 1),
-      opacity: b.tone === "paint" ? (b.group ? 0.85 : 0.55) * (0.6 + 0.4 * mark.load) : b.tone === "light" ? 0.18 : 0.26,
+      stroke: { paint: solid, unmixed, light: lighten(mid, 0.5), dark: darken(mid, 0.45) }[b.tone],
+      width: width * mark.width * k * (b.group ? 0.65 : 1) * (tail ? 1.8 : 1),
+      opacity:
+        b.tone === "paint" || b.tone === "unmixed"
+          ? (b.group ? 0.85 : 0.55) * (0.6 + 0.4 * mark.load) * (b.tone === "unmixed" ? 0.75 : 1)
+          : b.tone === "light"
+            ? 0.3
+            : 0.32,
       cap: "round",
     });
   }

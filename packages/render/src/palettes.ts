@@ -62,6 +62,17 @@ export const palettes: readonly Palette[] = [
     castle: ["#5DA68C", "#1E6A55"],
   },
   {
+    // Oil and acrylic pigments for Brush Strokes on Paper; each runs between two neighbouring hues
+    // (cerulean to ultramarine, cadmium orange to crimson, sap to phthalo green) so streaks of
+    // unmixed paint show.
+    id: "oils",
+    name: "Oils",
+    white: ["#4C9BD6", "#1F3F9E"],
+    black: ["#5A524B", "#17140F"],
+    capture: ["#EE5A2C", "#B3172B"],
+    castle: ["#7DB43F", "#14684A"],
+  },
+  {
     id: "neon",
     name: "Neon",
     white: ["#00F5FF", "#7B61FF"],

@@ -86,6 +86,10 @@ describe("brush strokes: weight and power", () => {
     }
   });
 
+  it("gives the king several times the pawn's weight of paint", () => {
+    expect(avgWidth("k") / avgWidth("p")).toBeGreaterThan(6);
+  });
+
   it("paints bishops and knights alike", () => {
     expect(PIECE_WIDTH.b).toBe(PIECE_WIDTH.n);
     expect(avgWidth("b") / avgWidth("n")).toBeCloseTo(1, 1);

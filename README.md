@@ -61,7 +61,7 @@ Each game has its own URL, for example `?round=<roundId>&game=<gameId>&style=pre
 | F | Full screen |
 | S | Next style (switches to that style's designed theme and palette, if it has one) |
 | T | Next theme (Dark, Light, Dark Checkers, Paper, Light Checkers) |
-| P | Next palette (Classic, Aurora, Ember, Noir, Botanical, Ink, Neon) |
+| P | Next palette (Classic, Aurora, Ember, Noir, Botanical, Ink, Oils, Neon) |
 | H | Hide/show the side panel |
 | L | Hide/show board labels |
 | O | OBS link (see below) |
