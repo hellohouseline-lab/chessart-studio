@@ -95,8 +95,14 @@ describe("brush strokes: weight and power", () => {
     expect(avgWidth("b") / avgWidth("n")).toBeCloseTo(1, 1);
   });
 
+  // Pooled over all the classics: the hand's ±15% swamps the capture boost in a game's few captures.
   it("makes a capture a little heavier than the same piece's quiet moves", () => {
-    for (const piece of ["p", "n", "b", "q"]) expect(avgWidth(piece, "capture"), piece).toBeGreaterThan(avgWidth(piece));
+    const all = Object.values(classicGames).flatMap((pgn) => buildScene(parseGame(pgn), { style: "brush-strokes" }).shapes as BrushMark[]);
+    const avg = (piece: string, kind: string) => {
+      const ws = all.filter((m) => m.piece === piece && m.kind === kind).map((m) => m.width);
+      return ws.reduce((a, b) => a + b, 0) / ws.length;
+    };
+    for (const piece of ["p", "n", "b", "q"]) expect(avg(piece, "capture"), piece).toBeGreaterThan(avg(piece, "normal"));
   });
 
   it("splatters only on captures, more for bigger prizes", () => {

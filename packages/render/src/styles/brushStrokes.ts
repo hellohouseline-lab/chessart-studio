@@ -15,14 +15,15 @@ export const PIECE_VALUE: Record<PieceType, number> = { p: 1, n: 3, b: 3, r: 5, 
 
 // Stroke weight follows rank, in board units: the king thickest, then the queen, the rook, bishop
 // and knight, and pawns thinnest. The king lays down about seven times the paint of a pawn.
-export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.52, q: 0.4, r: 0.27, b: 0.17, n: 0.17, p: 0.07 };
-const SPREAD = 0.1; // ± hand variation in width
+export const PIECE_WIDTH: Record<PieceType, number> = { k: 0.55, q: 0.4, r: 0.27, b: 0.17, n: 0.17, p: 0.07 };
+const SPREAD = 0.15; // ± hand variation in width
 
-// A capture is heavier, but stays just under the thinnest stroke any higher-ranked piece can paint.
-function captureWidth(piece: PieceType, width: number, captured: number): number {
+// A capture is heavier. Either way a stroke stays just under the thinnest any higher-ranked piece
+// can paint, so rank always shows.
+function rankedWidth(piece: PieceType, width: number, captured?: number): number {
   const above = Object.values(PIECE_WIDTH).filter((w) => w > PIECE_WIDTH[piece]);
   const ceiling = above.length ? 0.97 * (1 - SPREAD) * Math.min(...above) : Infinity;
-  return Math.min(width * (1.06 + 0.012 * captured), ceiling);
+  return Math.min(captured === undefined ? width : width * (1.06 + 0.012 * captured), ceiling);
 }
 
 type Brush = "flat" | "round" | "filbert" | "dry" | "slash";
@@ -228,8 +229,7 @@ function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
         ["filbert", 3.5],
         ["dry", 2],
       ]);
-  let width = PIECE_WIDTH[move.piece] * rand.range(1 - SPREAD, 1 + SPREAD);
-  if (capture) width = captureWidth(move.piece, width, captured);
+  const width = rankedWidth(move.piece, PIECE_WIDTH[move.piece] * rand.range(1 - SPREAD, 1 + SPREAD), capture ? captured : undefined);
   const load = brush === "dry" ? rand.range(0.4, 0.6) : capture ? rand.range(0.85, 1) : rand.range(0.5, 0.9);
   // A loaded brush carries its body most of the way; a drier one breaks into bristle streaks sooner.
   const end = Math.min(0.97, rand.range(0.6, 0.78) + 0.2 * load);
@@ -237,8 +237,10 @@ function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
   const path = new StrokePath(
     squareCenter(move.from),
     squareCenter(move.to),
-    // Played with intent: one committed line. Captures strike dead straight.
-    capture ? decisiveShape(rand, 0.025, 0.7) : decisiveShape(rand, 0.09, 0.3),
+    // Played with intent: one committed line, with a faint waver from the hand. Captures strike dead straight.
+    capture
+      ? decisiveShape(rand, 0.025, 0.7)
+      : { ...decisiveShape(rand, 0.09, 0.3), tremor: rand.range(0.01, 0.03), tremorFreq: rand.range(0.6, 1.5), tremorPhase: rand() },
   );
   const base = { width, dry, end, brush };
   const m: BrushMark = {
@@ -253,10 +255,10 @@ function buildMark(move: ArtMove, index: number, palette: Palette): BrushMark {
     attack: rand.range(0.03, 0.1),
     // A long lift-off: confident and loaded at the start, fast and dry at the finish.
     release: rand.range(Math.max(dry - 0.25, 0.3), end - 0.1),
-    swell: capture ? rand.range(0.06, 0.18) : rand.range(-0.05, 0.14),
+    swell: capture ? rand.range(0.06, 0.2) : rand.range(-0.1, 0.22),
     rough: brush === "dry" ? rand.range(0.05, 0.09) : rand.range(0.02, 0.055),
     wobble: [rand.range(1, 3), rand.range(4, 9), rand(), rand()],
-    pressure: [rand.range(0.5, 1.4), rand(), rand.range(0.01, 0.07)],
+    pressure: [rand.range(0.5, 1.6), rand(), rand.range(0.03, 0.13)],
     dry,
     end,
     passes: Array.from({ length: rand.int(2, 4) }, () => ({
@@ -379,7 +381,7 @@ function paintMark(mark: BrushMark, rect: Rect, t: number): PaintOp[] {
 export const brushStrokes: ArtStyle<BrushMark> = {
   id: "brush-strokes",
   name: "Brush Strokes",
-  defaults: { theme: "paper", palette: "ink" },
+  defaults: { theme: "paper", palette: "oils" },
   buildScene(game, { theme, palette }) {
     const shapes = game.moves.map((move, index): BrushMark => {
       const mark = buildMark(move, index, palette);
