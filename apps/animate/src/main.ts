@@ -494,6 +494,16 @@ $("exportPng").addEventListener("click", async () => {
 
 // --- start ---------------------------------------------------------------------------------
 
+// Phones: the menu button opens the site links under the top bar.
+const header = document.querySelector<HTMLElement>("header.nav")!;
+function setMenu(open: boolean) {
+  header.classList.toggle("open", open);
+  $("menu").setAttribute("aria-expanded", String(open));
+  $("menu").setAttribute("aria-label", open ? "Close menu" : "Menu");
+}
+$("menu").addEventListener("click", () => setMenu(!header.classList.contains("open")));
+window.addEventListener("keydown", (e) => e.key === "Escape" && setMenu(false));
+
 // Phones start with only the first step open; the rest show their current choice.
 if (window.matchMedia("(max-width: 860px)").matches) {
   document.querySelectorAll<HTMLDetailsElement>("details.step").forEach((d, i) => (d.open = i === 0));

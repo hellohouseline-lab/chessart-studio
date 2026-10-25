@@ -99,6 +99,29 @@ a:hover {
   text-decoration: none;
 }
 
+/* Phones only: opens the site links under the top bar. */
+.menu-button {
+  display: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.menu-button .icon-close,
+.nav.open .menu-button .icon-menu {
+  display: none;
+}
+
+.nav.open .menu-button .icon-close {
+  display: block;
+}
+
 .nav nav a[aria-current="page"] {
   color: var(--ink-strong);
   font-weight: 600;
@@ -138,6 +161,10 @@ a:hover {
   max-width: 460px;
   font-size: 19px;
   line-height: 1.5;
+}
+
+.hero .short {
+  display: none;
 }
 
 .workspace {
@@ -724,7 +751,13 @@ input[type="checkbox"] {
 
 @media (max-width: 860px) {
   .nav {
+    position: relative;
+    flex-wrap: nowrap;
     padding: 10px 16px;
+  }
+
+  .menu-button {
+    display: flex;
   }
 
   .brand {
@@ -736,8 +769,26 @@ input[type="checkbox"] {
   }
 
   .nav nav {
-    gap: 6px 18px;
-    font-size: 16px;
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    flex-direction: column;
+    gap: 0;
+    padding: 4px 16px 12px;
+    border-bottom: 1px solid var(--hairline);
+    background: #fff;
+    font-size: 18px;
+  }
+
+  .nav.open nav {
+    display: flex;
+  }
+
+  .nav nav a {
+    padding: 12px 0;
   }
 
   .page {
@@ -750,6 +801,14 @@ input[type="checkbox"] {
 
   .hero p {
     font-size: 16px;
+  }
+
+  .hero .long {
+    display: none;
+  }
+
+  .hero .short {
+    display: inline;
   }
 
   .workspace {

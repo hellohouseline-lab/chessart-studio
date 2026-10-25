@@ -11,7 +11,11 @@
   <body>
     <header class="nav">
       <a class="brand" href="https://chessart.me"><img src="/ChessArt_Logo_Black.png" alt="" />ChessArt</a>
-      <nav aria-label="Main">
+      <button id="menu" class="menu-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mainNav">
+        <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>
+        <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg>
+      </button>
+      <nav id="mainNav" aria-label="Main">
         <a href="https://chessart.me">Make art</a>
         <a href="./" aria-current="page">Animate</a>
         <a href="https://www.instagram.com/chessart.me" target="_blank" rel="noopener">Instagram</a>
@@ -23,8 +27,11 @@
       <section class="hero">
         <h1>Your game<br />in motion</h1>
         <p>
-          Paste any game and watch it draw itself, move by move. Pick a style and a format, then download a video ready for
-          Reels, TikTok, YouTube or your feed. Everything happens in your browser.
+          <span class="long">
+            Paste any game and watch it draw itself, move by move. Pick a style and a format, then download a video ready
+            for Reels, TikTok, YouTube or your feed. Everything happens in your browser.
+          </span>
+          <span class="short">Paste a game, pick a style, download a video. All in your browser.</span>
         </p>
       </section>
 
